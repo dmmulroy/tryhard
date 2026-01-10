@@ -188,6 +188,41 @@ TaggedError.matchPartial(
 );
 ```
 
+You can also use the factory helpers to avoid declaring `_tag` manually:
+
+```ts
+import { TaggedError } from "better-result";
+
+class NotFoundError extends TaggedError.define("NotFoundError") {
+  constructor(readonly id: string) {
+    super(`Not found: ${id}`);
+  }
+}
+
+class ValidationError extends TaggedError.define("ValidationError") {
+  constructor(readonly field: string) {
+    super(`Invalid: ${field}`);
+  }
+}
+
+type AppError = NotFoundError | ValidationError;
+
+const error = NotFoundError.from("123");
+
+// Exhaustive matching
+TaggedError.match(error, {
+  NotFoundError: (e) => `Missing: ${e.id}`,
+  ValidationError: (e) => `Bad field: ${e.field}`,
+});
+
+// Partial matching with fallback
+TaggedError.matchPartial(
+  error,
+  { NotFoundError: (e) => `Missing: ${e.id}` },
+  (e) => `Unknown error: ${e.message}`,
+);
+```
+
 ## Serialization
 
 Rehydrate Results from JSON for storage or network transfer:
@@ -245,6 +280,8 @@ const rehydrated = Result.hydrate(JSON.parse(JSON.stringify(errResult)));
 
 | Method                                     | Description                          |
 | ------------------------------------------ | ------------------------------------ |
+| `TaggedError.define(tag)`                  | Create a tagged error subclass       |
+| `TaggedError.from(...args)`                | Instantiate a tagged error subclass  |
 | `TaggedError.isError(value)`               | Type guard for Error                 |
 | `TaggedError.isTaggedError(value)`         | Type guard for TaggedError           |
 | `TaggedError.match(error, handlers)`       | Exhaustive pattern match by `_tag`   |

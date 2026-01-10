@@ -134,6 +134,82 @@ describe("TaggedError", () => {
       expect(matchPartialAppError(error)).toBe("fallback: NetworkError");
     });
   });
+
+  describe("define", () => {
+    it("creates a tagged class with _tag", () => {
+      const XError = TaggedError.define("XError");
+      const error = new XError("boom");
+      expect(error._tag).toBe("XError");
+      expect(XError._tag).toBe("XError");
+    });
+
+    it("creates instances that are TaggedError", () => {
+      const XError = TaggedError.define("XError");
+      const error = new XError("boom");
+      expect(error).toBeInstanceOf(TaggedError);
+    });
+
+    it("binds to subclasses of TaggedError", () => {
+      abstract class AppTaggedError extends TaggedError {}
+      class AppError extends AppTaggedError.define("AppError") {
+        constructor(readonly code: number) {
+          super(`app error: ${code}`);
+        }
+      }
+
+      const error = new AppError(500);
+      expect(error).toBeInstanceOf(AppTaggedError);
+      expect(error._tag).toBe("AppError");
+    });
+
+    it("preserves static metadata on base class", () => {
+      abstract class AppTaggedError extends TaggedError {
+        static readonly code = 42;
+      }
+      class AppError extends AppTaggedError.define("AppError") {
+        constructor(readonly code: number) {
+          super(`app error: ${code}`);
+        }
+      }
+
+      expect(AppError.code).toBe(42);
+    });
+
+    it("preserves static and instance metadata like the old extends style", () => {
+      abstract class AppTaggedError extends TaggedError {
+        static readonly category = "app" as const;
+      }
+
+      class MetaError extends AppTaggedError.define("MetaError") {
+        readonly severity = "high" as const;
+        constructor(readonly code: number) {
+          super(`meta error: ${code}`);
+        }
+      }
+
+      const error = new MetaError(7);
+      expect(MetaError._tag).toBe("MetaError");
+      expect(MetaError.category).toBe("app");
+      expect(error._tag).toBe("MetaError");
+      expect(error.severity).toBe("high");
+      expect(error.code).toBe(7);
+    });
+  });
+
+  describe("from", () => {
+    it("constructs instance of TaggedError subclasses", () => {
+      class FromError extends TaggedError.define("FromError") {
+        constructor(readonly code: number) {
+          super(`boom: ${code}`);
+        }
+      }
+
+      const error = FromError.from(500);
+      expect(error).toBeInstanceOf(FromError);
+      expect(error._tag).toBe("FromError");
+      expect(error.code).toBe(500);
+    });
+  });
 });
 
 describe("UnhandledException", () => {
