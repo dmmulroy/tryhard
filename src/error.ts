@@ -10,6 +10,13 @@
  *   }
  * }
  */
+type TaggedErrorStatic<Self extends typeof TaggedError> = Omit<Self, "prototype">;
+
+type TaggedErrorDefined<Tag extends string, Self extends typeof TaggedError> =
+  TaggedErrorStatic<Self> &
+    (new (message: string, options?: ErrorOptions) => InstanceType<Self> & { readonly _tag: Tag }) &
+    { readonly _tag: Tag };
+
 export abstract class TaggedError extends Error {
   abstract readonly _tag: string;
 
@@ -23,6 +30,40 @@ export abstract class TaggedError extends Error {
     if (options?.cause !== undefined && options.cause instanceof Error) {
       this.stack = `${this.stack}\nCaused by: ${options.cause.stack}`;
     }
+  }
+
+  /**
+   * Create a TaggedError subclass bound to a literal tag.
+   */
+  static define<Tag extends string, Self extends typeof TaggedError>(
+    this: Self,
+    tag: Tag,
+  ): TaggedErrorDefined<Tag, Self> {
+    const Base: typeof TaggedError = this;
+
+    class BoundTaggedError extends Base {
+      static readonly _tag = tag;
+      readonly _tag = tag;
+
+      constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
+        this.name = tag;
+      }
+    }
+
+    // SAFETY: BoundTaggedError matches TaggedErrorDefined and inherits TaggedError statics.
+    return BoundTaggedError as unknown as TaggedErrorDefined<Tag, Self>;
+  }
+
+  /**
+   * Instantiate the current TaggedError subclass.
+   */
+  static from<Args extends unknown[], T extends TaggedError>(
+    this: new (...args: Args) => T,
+    ...args: Args
+  ): T {
+    // SAFETY: `this` is a concrete constructor for TaggedError.
+    return new this(...args);
   }
 
   /**
