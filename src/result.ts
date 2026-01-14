@@ -567,6 +567,12 @@ const gen: {
       const asyncIter = iterator as unknown as AsyncGenerator<Yield, R, unknown>;
       const state = await asyncIter.next();
       assertIsResult(state.value);
+      if (!state.done) {
+        // SAFETY: `.return()` requires a value of the generator's return type `R`,
+        // but we only need to close the generator to run `finally` blocks. The
+        // value is ignored by consumers, so `undefined` is safe here.
+        await asyncIter.return?.(undefined as unknown as R);
+      }
       return state.value as Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
     })();
   }
@@ -576,6 +582,12 @@ const gen: {
   const syncIter = iterator as Generator<Yield, R, unknown>;
   const state = syncIter.next();
   assertIsResult(state.value);
+  if (!state.done) {
+    // SAFETY: `.return()` requires a value of the generator's return type `R`,
+    // but we only need to close the generator to run `finally` blocks. The
+    // value is ignored by consumers, so `undefined` is safe here.
+    syncIter.return?.(undefined as unknown as R);
+  }
   return state.value as Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
 }) as {
   <Yield extends Err<never, unknown>, R extends AnyResult>(

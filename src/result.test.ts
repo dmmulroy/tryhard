@@ -325,6 +325,24 @@ describe("Result", () => {
       }
     });
 
+    it("runs finally blocks when short-circuiting", () => {
+      let finallyCalled = false;
+
+      const getA = () => Result.err<number, string>("a failed");
+
+      const result = Result.gen(function* () {
+        try {
+          yield* getA();
+          return Result.ok(1);
+        } finally {
+          finallyCalled = true;
+        }
+      });
+
+      expect(Result.isError(result)).toBe(true);
+      expect(finallyCalled).toBe(true);
+    });
+
     it("collects error types from yields", () => {
       class ErrorA extends Error {
         readonly _tag = "ErrorA" as const;
@@ -392,6 +410,24 @@ describe("Result", () => {
 
       expect(Result.isError(result)).toBe(true);
       expect(bCalled).toBe(false);
+    });
+
+    it("runs finally blocks when short-circuiting (async)", async () => {
+      let finallyCalled = false;
+
+      const fetchA = () => Promise.resolve(Result.err<number, string>("a failed"));
+
+      const result = await Result.gen(async function* () {
+        try {
+          yield* Result.await(fetchA());
+          return Result.ok(1);
+        } finally {
+          finallyCalled = true;
+        }
+      });
+
+      expect(Result.isError(result)).toBe(true);
+      expect(finallyCalled).toBe(true);
     });
   });
 
