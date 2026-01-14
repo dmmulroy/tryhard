@@ -322,19 +322,19 @@ type InferYieldErr<Y> = Y extends Err<never, infer E> ? E : never;
  * Extracts success type T from any Ok in a union.
  * Distributive: InferResultOk<Ok<A, X> | Ok<B, Y>> = A | B
  */
-type InferResultOk<R> = R extends Ok<infer T, unknown> ? T : never;
+export type InferResultOk<R> = R extends Ok<infer T, unknown> ? T : never;
 
 /**
  * Extracts error type E from any Err in a union.
  * Distributive: InferResultErr<Err<X, A> | Err<Y, B>> = A | B
  */
-type InferResultErr<R> = R extends Err<unknown, infer E> ? E : never;
+export type InferResultErr<R> = R extends Err<unknown, infer E> ? E : never;
 
 /**
  * Constraint for any union of Ok/Err types.
  * Used in Result.gen to accept flexible return types from generators.
  */
-type AnyResult = Ok<unknown, unknown> | Err<unknown, unknown>;
+export type AnyResult = Ok<unknown, unknown> | Err<unknown, unknown>;
 
 const ok = <A, E = never>(value: A): Ok<A, E> => new Ok<A, E>(value);
 
