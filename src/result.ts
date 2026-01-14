@@ -318,6 +318,24 @@ export type Result<T, E> = Ok<T, E> | Err<T, E>;
  */
 type InferYieldErr<Y> = Y extends Err<never, infer E> ? E : never;
 
+/**
+ * Extracts success type T from any Ok in a union.
+ * Distributive: InferResultOk<Ok<A, X> | Ok<B, Y>> = A | B
+ */
+type InferResultOk<R> = R extends Ok<infer T, unknown> ? T : never;
+
+/**
+ * Extracts error type E from any Err in a union.
+ * Distributive: InferResultErr<Err<X, A> | Err<Y, B>> = A | B
+ */
+type InferResultErr<R> = R extends Err<unknown, infer E> ? E : never;
+
+/**
+ * Constraint for any union of Ok/Err types.
+ * Used in Result.gen to accept flexible return types from generators.
+ */
+type AnyResult = Ok<unknown, unknown> | Err<unknown, unknown>;
+
 const ok = <A, E = never>(value: A): Ok<A, E> => new Ok<A, E>(value);
 
 const isOk = <A, E>(result: Result<A, E>): result is Ok<A, E> => {
@@ -515,30 +533,30 @@ const unwrapOr: {
 });
 
 const gen: {
-  <Yield extends Err<never, unknown>, T, E>(
-    body: () => Generator<Yield, Result<T, E>, unknown>,
-  ): Result<T, InferYieldErr<Yield> | E>;
-  <Yield extends Err<never, unknown>, T, E, This>(
-    body: (this: This) => Generator<Yield, Result<T, E>, unknown>,
+  <Yield extends Err<never, unknown>, R extends AnyResult>(
+    body: () => Generator<Yield, R, unknown>,
+  ): Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
+  <Yield extends Err<never, unknown>, R extends AnyResult, This>(
+    body: (this: This) => Generator<Yield, R, unknown>,
     thisArg: This,
-  ): Result<T, InferYieldErr<Yield> | E>;
-  <Yield extends Err<never, unknown>, T, E>(
-    body: () => AsyncGenerator<Yield, Result<T, E>, unknown>,
-  ): Promise<Result<T, InferYieldErr<Yield> | E>>;
-  <Yield extends Err<never, unknown>, T, E, This>(
-    body: (this: This) => AsyncGenerator<Yield, Result<T, E>, unknown>,
+  ): Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
+  <Yield extends Err<never, unknown>, R extends AnyResult>(
+    body: () => AsyncGenerator<Yield, R, unknown>,
+  ): Promise<Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>>;
+  <Yield extends Err<never, unknown>, R extends AnyResult, This>(
+    body: (this: This) => AsyncGenerator<Yield, R, unknown>,
     thisArg: This,
-  ): Promise<Result<T, InferYieldErr<Yield> | E>>;
-} = (<Yield extends Err<never, unknown>, T, E, This>(
+  ): Promise<Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>>;
+} = (<Yield extends Err<never, unknown>, R extends AnyResult, This>(
   body:
-    | (() => Generator<Yield, Result<T, E>, unknown>)
-    | (() => AsyncGenerator<Yield, Result<T, E>, unknown>)
-    | ((this: This) => Generator<Yield, Result<T, E>, unknown>)
-    | ((this: This) => AsyncGenerator<Yield, Result<T, E>, unknown>),
+    | (() => Generator<Yield, R, unknown>)
+    | (() => AsyncGenerator<Yield, R, unknown>)
+    | ((this: This) => Generator<Yield, R, unknown>)
+    | ((this: This) => AsyncGenerator<Yield, R, unknown>),
   thisArg?: This,
-): Result<T, InferYieldErr<Yield> | E> | Promise<Result<T, InferYieldErr<Yield> | E>> => {
+): Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>> | Promise<Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>> => {
   // SAFETY: body.call binds thisArg; cast needed due to union of function signatures
-  const iterator = (body as (this: This) => Generator<Yield, Result<T, E>, unknown>).call(
+  const iterator = (body as (this: This) => Generator<Yield, R, unknown>).call(
     thisArg as This,
   );
 
@@ -546,34 +564,34 @@ const gen: {
   if (Symbol.asyncIterator in iterator) {
     return (async () => {
       // SAFETY: Async check above guarantees this is an async generator
-      const asyncIter = iterator as unknown as AsyncGenerator<Yield, Result<T, E>, unknown>;
+      const asyncIter = iterator as unknown as AsyncGenerator<Yield, R, unknown>;
       const state = await asyncIter.next();
       assertIsResult(state.value);
-      return state.value as Result<T, InferYieldErr<Yield> | E>;
+      return state.value as Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
     })();
   }
 
   // Sync generator
   // SAFETY: If not async, must be sync generator
-  const syncIter = iterator as Generator<Yield, Result<T, E>, unknown>;
+  const syncIter = iterator as Generator<Yield, R, unknown>;
   const state = syncIter.next();
   assertIsResult(state.value);
-  return state.value as Result<T, InferYieldErr<Yield> | E>;
+  return state.value as Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
 }) as {
-  <Yield extends Err<never, unknown>, T, E>(
-    body: () => Generator<Yield, Result<T, E>, unknown>,
-  ): Result<T, InferYieldErr<Yield> | E>;
-  <Yield extends Err<never, unknown>, T, E, This>(
-    body: (this: This) => Generator<Yield, Result<T, E>, unknown>,
+  <Yield extends Err<never, unknown>, R extends AnyResult>(
+    body: () => Generator<Yield, R, unknown>,
+  ): Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
+  <Yield extends Err<never, unknown>, R extends AnyResult, This>(
+    body: (this: This) => Generator<Yield, R, unknown>,
     thisArg: This,
-  ): Result<T, InferYieldErr<Yield> | E>;
-  <Yield extends Err<never, unknown>, T, E>(
-    body: () => AsyncGenerator<Yield, Result<T, E>, unknown>,
-  ): Promise<Result<T, InferYieldErr<Yield> | E>>;
-  <Yield extends Err<never, unknown>, T, E, This>(
-    body: (this: This) => AsyncGenerator<Yield, Result<T, E>, unknown>,
+  ): Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>;
+  <Yield extends Err<never, unknown>, R extends AnyResult>(
+    body: () => AsyncGenerator<Yield, R, unknown>,
+  ): Promise<Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>>;
+  <Yield extends Err<never, unknown>, R extends AnyResult, This>(
+    body: (this: This) => AsyncGenerator<Yield, R, unknown>,
     thisArg: This,
-  ): Promise<Result<T, InferYieldErr<Yield> | E>>;
+  ): Promise<Result<InferResultOk<R>, InferYieldErr<Yield> | InferResultErr<R>>>;
 };
 
 async function* resultAwait<T, E>(

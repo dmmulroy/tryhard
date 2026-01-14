@@ -560,3 +560,167 @@ describe("Functor Laws", () => {
     });
   });
 });
+
+describe("Type Inference", () => {
+  // These tests verify type inference behavior identified by code review.
+  // They compile with explicit type annotations that tsc verifies.
+
+  class ErrorA extends Error {
+    readonly _tag = "ErrorA" as const;
+  }
+  class ErrorB extends Error {
+    readonly _tag = "ErrorB" as const;
+  }
+  class ErrorC extends Error {
+    readonly _tag = "ErrorC" as const;
+  }
+
+  describe("mapError on union", () => {
+    it("transforms union error type to single type", () => {
+      // Start with union error type
+      const r: Result<number, ErrorA | ErrorB> = Result.err(new ErrorA());
+
+      // Transform union to single type
+      const mapped: Result<number, ErrorC> = r.mapError(
+        (e): ErrorC => new ErrorC(`was: ${e._tag}`),
+      );
+
+      expect(Result.isError(mapped)).toBe(true);
+      if (Result.isError(mapped)) {
+        expect(mapped.error).toBeInstanceOf(ErrorC);
+        expect(mapped.error.message).toBe("was: ErrorA");
+      }
+    });
+
+    it("partially transforms union (preserving some variants)", () => {
+      const r: Result<number, ErrorA | ErrorB> = Result.err(new ErrorA());
+
+      // Transform only ErrorA to ErrorC, keep ErrorB
+      const mapped: Result<number, ErrorB | ErrorC> = r.mapError(
+        (e): ErrorB | ErrorC => (e._tag === "ErrorA" ? new ErrorC(e.message) : e),
+      );
+
+      expect(Result.isError(mapped)).toBe(true);
+      if (Result.isError(mapped)) {
+        expect(mapped.error).toBeInstanceOf(ErrorC);
+      }
+    });
+  });
+
+  describe("Err.map preserves error type", () => {
+    it("map on Err returns Err with same error, transformed T", () => {
+      const r: Result<number, ErrorA> = Result.err(new ErrorA("original"));
+
+      // map should return Result<string, ErrorA> - error preserved
+      const mapped: Result<string, ErrorA> = r.map((n) => n.toString());
+
+      expect(Result.isError(mapped)).toBe(true);
+      if (Result.isError(mapped)) {
+        expect(mapped.error).toBeInstanceOf(ErrorA);
+        expect(mapped.error.message).toBe("original");
+      }
+    });
+  });
+
+  describe("never error type", () => {
+    it("gen with only Ok returns and Ok yields infers never error", () => {
+      // No yields from Results with errors, no return Result.err()
+      const result: Result<number, never> = Result.gen(function* () {
+        const a = yield* Result.ok(1);
+        const b = yield* Result.ok(2);
+        return Result.ok(a + b);
+      });
+
+      expect(Result.isOk(result)).toBe(true);
+      expect(result.unwrap()).toBe(3);
+    });
+
+    it("never error preserved through map", () => {
+      const r: Result<number, never> = Result.ok(42);
+      const mapped: Result<string, never> = r.map((n) => n.toString());
+
+      expect(mapped.unwrap()).toBe("42");
+    });
+
+    it("never error preserved through andThen with never", () => {
+      const r: Result<number, never> = Result.ok(42);
+      const chained: Result<string, never> = r.andThen((n) => Result.ok(n.toString()));
+
+      expect(chained.unwrap()).toBe("42");
+    });
+  });
+
+  describe("unwrapOr type widening", () => {
+    it("unwrapOr with different fallback type widens to union", () => {
+      const r: Result<number, ErrorA> = Result.err(new ErrorA());
+
+      // Fallback is string, so result is number | string
+      const value: number | string = r.unwrapOr("fallback");
+
+      expect(value).toBe("fallback");
+    });
+
+    it("unwrapOr with same type returns that type", () => {
+      const r: Result<number, ErrorA> = Result.err(new ErrorA());
+
+      const value: number = r.unwrapOr(0);
+
+      expect(value).toBe(0);
+    });
+  });
+
+  describe("generic Result preservation", () => {
+    it("generic function preserves type parameter through gen", () => {
+      function identity<T>(value: T): Result<T, ErrorA> {
+        return Result.gen(function* () {
+          const x = yield* Result.ok<T, ErrorA>(value);
+          return Result.ok(x);
+        });
+      }
+
+      const strResult: Result<string, ErrorA> = identity("hello");
+      const numResult: Result<number, ErrorA> = identity(42);
+      const objResult: Result<{ id: number }, ErrorA> = identity({ id: 1 });
+
+      expect(strResult.unwrap()).toBe("hello");
+      expect(numResult.unwrap()).toBe(42);
+      expect(objResult.unwrap()).toEqual({ id: 1 });
+    });
+
+    it("generic function with constraint preserves constraint", () => {
+      function extractId<T extends { id: number }>(value: T): Result<number, ErrorA> {
+        return Result.gen(function* () {
+          const obj = yield* Result.ok<T, ErrorA>(value);
+          return Result.ok(obj.id);
+        });
+      }
+
+      const result = extractId({ id: 42, name: "test" });
+      expect(result.unwrap()).toBe(42);
+    });
+  });
+
+  describe("multiple return Result.err inference (bug fix)", () => {
+    it("infers union of all returned error types", () => {
+      function process(input: string): Result<string, ErrorA | ErrorB | ErrorC> {
+        return Result.gen(function* () {
+          if (input.length === 0) {
+            return Result.err(new ErrorA("empty"));
+          }
+          if (input.length < 3) {
+            return Result.err(new ErrorB("too short"));
+          }
+          if (input === "bad") {
+            return Result.err(new ErrorC("bad value"));
+          }
+          return Result.ok(input.toUpperCase());
+        });
+      }
+
+      expect(process("").unwrapOr("default")).toBe("default");
+      expect(process("ab").unwrapOr("default")).toBe("default");
+      expect(process("bad").unwrapOr("default")).toBe("default");
+      expect(process("good").unwrap()).toBe("GOOD");
+    });
+  });
+});
