@@ -151,6 +151,8 @@ const result = await Result.gen(async function* () {
 });
 ```
 
+Rule of thumb: inside `Result.gen`, always `yield* Result.await(...)` for any `Promise<Result>` (including `Result.pool`).
+
 Errors from all yielded Results are automatically collected into the final error union type.
 
 ## Retry Support
