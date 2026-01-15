@@ -485,6 +485,177 @@ const tryPromise: {
   return result;
 };
 
+type PoolMode = "failFast" | "collectAll";
+
+type PoolConfig = {
+  concurrency: number;
+  mode?: PoolMode;
+};
+
+type PoolConfigFailFast = {
+  concurrency: number;
+  mode?: "failFast";
+};
+
+type PoolConfigCollectAll = {
+  concurrency: number;
+  mode: "collectAll";
+};
+
+type PoolTaskResult<B, E> = {
+  index: number;
+  result: Result<B, E>;
+};
+
+type StreamPoolConfig = {
+  concurrency: number;
+};
+
+// Important: promises must NOT remove themselves on settle; a promise can finish
+// "in the background" and we'd lose its value (never yielded). Instead, we race
+// promises that resolve to `[promise, value]` so we can remove the winner.
+async function* asyncPool<A, T>(
+  concurrency: number,
+  items: Iterable<A>,
+  iteratorFn: (a: A, index: number) => Promise<T>,
+): AsyncGenerator<T, void, unknown> {
+  type ExecutingPromise = Promise<readonly [ExecutingPromise, T]>;
+
+  const executing = new Set<ExecutingPromise>();
+
+  const consume = async (): Promise<T> => {
+    const [promise, value] = await Promise.race(executing);
+    executing.delete(promise);
+    return value;
+  };
+
+  let index = 0;
+
+  try {
+    for (const item of items) {
+      const itemIndex = index;
+      index++;
+
+      let promise!: ExecutingPromise;
+      promise = Promise.resolve()
+        .then(() => iteratorFn(item, itemIndex))
+        .then((value) => [promise, value] as const);
+
+      executing.add(promise);
+
+      if (executing.size >= concurrency) {
+        yield await consume();
+      }
+    }
+
+    while (executing.size > 0) {
+      yield await consume();
+    }
+  } finally {
+    // If consumer stops early, drain in-flight promises to avoid unhandled rejections.
+    while (executing.size > 0) {
+      await consume();
+    }
+  }
+}
+
+const pool: {
+  <A, B, E>(
+    items: Iterable<A>,
+    fn: (a: A, index: number) => Promise<Result<B, E>>,
+    config: PoolConfigFailFast,
+  ): Promise<Result<Array<B>, E>>;
+  <A, B, E>(
+    items: Iterable<A>,
+    fn: (a: A, index: number) => Promise<Result<B, E>>,
+    config: PoolConfigCollectAll,
+  ): Promise<Result<Array<B>, Array<E>>>;
+} = async <A, B, E>(
+  items: Iterable<A>,
+  fn: (a: A, index: number) => Promise<Result<B, E>>,
+  config: PoolConfig,
+): Promise<Result<Array<B>, E | Array<E>>> => {
+  const mode: PoolMode = config.mode ?? "failFast";
+
+  if (!Number.isInteger(config.concurrency) || config.concurrency < 1) {
+    throw new Error(`Result.pool concurrency must be a positive integer, got: ${String(config.concurrency)}`);
+  }
+
+  // These arrays are sparse while tasks run; we rehydrate at the end.
+  const okValues: Array<B> = [];
+
+  // Note: E can be `undefined`, so we can't use `undefined` as a "missing" sentinel.
+  type ErrorSlot = { readonly error: E };
+  const errorValues: Array<ErrorSlot | undefined> = [];
+
+  let firstError: ErrorSlot | null = null;
+
+  const taskFn = async (item: A, index: number): Promise<PoolTaskResult<B, E>> => {
+    const result = await tryOrPanicAsync(() => fn(item, index), "Result.pool mapper threw");
+    return { index, result };
+  };
+
+  for await (const { index, result } of asyncPool(config.concurrency, items, taskFn)) {
+    if (result.status === "ok") {
+      okValues[index] = result.value;
+      continue;
+    }
+
+    if (mode === "collectAll") {
+      errorValues[index] = { error: result.error };
+      continue;
+    }
+
+    firstError = { error: result.error };
+    break;
+  }
+
+  if (mode === "collectAll") {
+    const errors: Array<E> = [];
+    for (const slot of errorValues) {
+      if (slot) {
+        errors.push(slot.error);
+      }
+    }
+    if (errors.length > 0) {
+      return err(errors);
+    }
+  } else if (firstError) {
+    return err(firstError.error);
+  }
+
+  const results: Array<B> = new Array<B>(okValues.length);
+  for (let index = 0; index < okValues.length; index++) {
+    results[index] = okValues[index]!;
+  }
+
+  return ok(results);
+};
+
+const streamPool: {
+  <A, B, E>(
+    items: Iterable<A>,
+    fn: (a: A, index: number) => Promise<Result<B, E>>,
+    config: StreamPoolConfig,
+  ): AsyncGenerator<Result<B, E>, void, unknown>;
+} = async function* <A, B, E>(
+  items: Iterable<A>,
+  fn: (a: A, index: number) => Promise<Result<B, E>>,
+  config: StreamPoolConfig,
+): AsyncGenerator<Result<B, E>, void, unknown> {
+  if (!Number.isInteger(config.concurrency) || config.concurrency < 1) {
+    throw new Error(`Result.streamPool concurrency must be a positive integer, got: ${String(config.concurrency)}`);
+  }
+
+  const taskFn = async (item: A, index: number): Promise<Result<B, E>> => {
+    return await tryOrPanicAsync(() => fn(item, index), "Result.streamPool mapper threw");
+  };
+
+  for await (const result of asyncPool(config.concurrency, items, taskFn)) {
+    yield result;
+  }
+};
+
 const map: {
   <A, B, E>(result: Result<A, E>, fn: (a: A) => B): Result<B, E>;
   <A, B>(fn: (a: A) => B): <E>(result: Result<A, E>) => Result<B, E>;
@@ -765,6 +936,36 @@ export const Result = {
    * }, { retry: { times: 3, delayMs: 100, backoff: "exponential" } })
    */
   tryPromise,
+  /**
+   * Streams results as tasks complete using a concurrency limit.
+   *
+   * - Results are yielded in completion order.
+   * - Use `for await...of` to react to each Result as it finishes.
+   * - In `Result.gen`, iterate with `for await` inside the async generator body.
+   *
+   * @example
+   * for await (const result of Result.streamPool([1, 2, 3], async (n) => Result.ok(n * 2), { concurrency: 2 })) {
+   *   if (Result.isOk(result)) console.log(result.value);
+   * }
+   */
+  streamPool,
+  /**
+   * Maps an iterable with a concurrency limit.
+   *
+   * - `mode: "failFast"` (default): stop scheduling new work after first Err (in-flight tasks still drain).
+   * - `mode: "collectAll"`: run everything; if any Err occurs, returns Err of all errors.
+   * - Results (and collectAll errors) preserve input order.
+   *
+   * @example
+   * const result = await Result.pool([1, 2, 3], async (n) => Result.ok(n * 2), { concurrency: 2 });
+   *
+   * // In async Result.gen
+   * const result = await Result.gen(async function* () {
+   *   const values = yield* Result.await(Result.pool([1, 2], async (n) => Result.ok(n), { concurrency: 2 }));
+   *   return Result.ok(values);
+   * });
+   */
+  pool,
   /**
    * Transforms success value, passes error through.
    *

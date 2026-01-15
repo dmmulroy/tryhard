@@ -199,6 +199,202 @@ describe("Result", () => {
     });
   });
 
+  describe("pool", () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    it("maps with concurrency and preserves input order", async () => {
+      const result = await Result.pool(
+        [1, 2, 3, 4],
+        async (n) => {
+          await sleep(50 - n * 10);
+          return Result.ok(n * 2);
+        },
+        { concurrency: 2 },
+      );
+
+      expect(Result.isOk(result)).toBe(true);
+      if (Result.isOk(result)) {
+        expect(result.value).toEqual([2, 4, 6, 8]);
+      }
+    });
+
+    it("does not exceed configured concurrency", async () => {
+      let active = 0;
+      let maxActive = 0;
+
+      const result = await Result.pool(
+        [1, 2, 3, 4, 5, 6],
+        async (n) => {
+          active++;
+          maxActive = Math.max(maxActive, active);
+          await sleep(10);
+          active--;
+          return Result.ok(n);
+        },
+        { concurrency: 2 },
+      );
+
+      expect(Result.isOk(result)).toBe(true);
+      expect(maxActive).toBeLessThanOrEqual(2);
+    });
+
+    it("fail-fast mode stops scheduling new work", async () => {
+      let calls = 0;
+
+      const result = await Result.pool(
+        [1, 2, 3],
+        async (n) => {
+          calls++;
+          if (n === 2) {
+            return Result.err("boom");
+          }
+          return Result.ok(n);
+        },
+        { concurrency: 1, mode: "failFast" },
+      );
+
+      expect(Result.isError(result)).toBe(true);
+      expect(calls).toBe(2);
+    });
+
+    it("collect-all mode aggregates all errors", async () => {
+      const result = await Result.pool(
+        [1, 2, 3, 4],
+        async (n) => {
+          if (n % 2 === 0) {
+            return Result.err(`even ${n}`);
+          }
+          return Result.ok(n);
+        },
+        { concurrency: 2, mode: "collectAll" },
+      );
+
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error).toEqual(["even 2", "even 4"]);
+      }
+    });
+
+    it("handles undefined errors in fail-fast mode", async () => {
+      const result = await Result.pool(
+        [1, 2],
+        async (n) => {
+          if (n === 2) {
+            return Result.err(undefined);
+          }
+          return Result.ok(n);
+        },
+        { concurrency: 1, mode: "failFast" },
+      );
+
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error).toBe(undefined);
+      }
+    });
+
+    it("handles undefined errors in collect-all mode", async () => {
+      const result = await Result.pool(
+        [1, 2],
+        async (n) => {
+          if (n === 2) {
+            return Result.err(undefined);
+          }
+          return Result.ok(n);
+        },
+        { concurrency: 2, mode: "collectAll" },
+      );
+
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error).toEqual([undefined]);
+      }
+    });
+
+    it("throws Panic when mapper throws", async () => {
+      await expect(
+        Result.pool(
+          [1],
+          async () => {
+            throw new Error("boom");
+          },
+          { concurrency: 1 },
+        ),
+      ).rejects.toBeInstanceOf(Panic);
+    });
+
+    it("rejects when concurrency is invalid", async () => {
+      await expect(
+        Result.pool([1], async (n) => Result.ok(n), {
+          concurrency: 0,
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("streamPool", () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    it("streams results in completion order", async () => {
+      const results: Array<number> = [];
+
+      const delays = [60, 30, 5];
+
+      for await (const result of Result.streamPool(
+        [1, 2, 3],
+        async (n) => {
+          await sleep(delays[n - 1] ?? 0);
+          return Result.ok(n);
+        },
+        { concurrency: 2 },
+      )) {
+        if (Result.isOk(result)) {
+          results.push(result.value);
+        }
+      }
+
+      expect(results).toEqual([2, 3, 1]);
+    });
+
+    it("streams errors as they complete", async () => {
+      const results: Array<Result<number, string>> = [];
+
+      for await (const result of Result.streamPool(
+        [1, 2, 3],
+        async (n) => {
+          await sleep(20);
+          return n === 2 ? Result.err("boom") : Result.ok(n);
+        },
+        { concurrency: 2 },
+      )) {
+        results.push(result);
+      }
+
+      expect(results.length).toBe(3);
+      expect(results.some(Result.isError)).toBe(true);
+    });
+
+    it("throws Panic when mapper throws", async () => {
+      const iterator = Result.streamPool(
+        [1],
+        async () => {
+          throw new Error("boom");
+        },
+        { concurrency: 1 },
+      );
+
+      await expect(iterator.next()).rejects.toBeInstanceOf(Panic);
+    });
+
+    it("rejects when concurrency is invalid", async () => {
+      const iterator = Result.streamPool([1], async (n) => Result.ok(n), {
+        concurrency: 0,
+      });
+
+      await expect(iterator.next()).rejects.toThrow();
+    });
+  });
+
   describe("map", () => {
     it("transforms Ok value", () => {
       const result = Result.ok(2).map((x) => x * 3);

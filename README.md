@@ -48,6 +48,7 @@ const message = parsed.match({
 - [Extracting Values](#extracting-values)
 - [Generator Composition](#generator-composition)
 - [Retry Support](#retry-support)
+- [Concurrency Pools](#concurrency-pools)
 - [UnhandledException](#unhandledexception)
 - [Panic](#panic)
 - [Tagged Errors](#tagged-errors)
@@ -161,6 +162,41 @@ const result = await Result.tryPromise(() => fetch(url), {
     delayMs: 100,
     backoff: "exponential", // or "linear" | "constant"
   },
+});
+```
+
+## Concurrency Pools
+
+Use `Result.pool` to run async Result tasks with a concurrency limit and collect results in input order:
+
+```ts
+const result = await Result.pool(
+  [1, 2, 3],
+  async (n) => Result.ok(n * 2),
+  { concurrency: 2 },
+);
+```
+
+Use `Result.streamPool` to stream results in completion order:
+
+```ts
+for await (const result of Result.streamPool([1, 2, 3], async (n) => Result.ok(n), { concurrency: 2 })) {
+  if (Result.isOk(result)) console.log(result.value);
+}
+```
+
+Inside `Result.gen`, iterate with `for await` in the async generator body:
+
+```ts
+const result = await Result.gen(async function* () {
+  const values: number[] = [];
+
+  for await (const item of Result.streamPool([1, 2, 3], async (n) => Result.ok(n), { concurrency: 2 })) {
+    if (Result.isError(item)) return Result.err(item.error);
+    values.push(item.value);
+  }
+
+  return Result.ok(values);
 });
 ```
 
@@ -329,6 +365,8 @@ const rehydrated = Result.hydrate(JSON.parse(JSON.stringify(errResult)));
 | `Result.err(error)`              | Create error                            |
 | `Result.try(fn)`                 | Wrap throwing function                  |
 | `Result.tryPromise(fn, config?)` | Wrap async function with optional retry |
+| `Result.pool(items, fn, config)` | Concurrency-limited Result pooling      |
+| `Result.streamPool(...)`         | Async iterator of Results               |
 | `Result.isOk(result)`            | Type guard for Ok                       |
 | `Result.isError(result)`         | Type guard for Err                      |
 | `Result.gen(fn)`                 | Generator composition                   |
