@@ -35,6 +35,17 @@ export class Ok<A, E = never> {
   constructor(readonly value: A) {}
 
   /**
+   * Coerces phantom error type. Useful for returning from typed functions.
+   * @example
+   * function getUser(): Result<User, AppError> {
+   *   return Result.ok(user).intoErr(); // infers AppError from return type
+   * }
+   */
+  intoErr<E2>(): Ok<A, E2> {
+    return this as unknown as Ok<A, E2>;
+  }
+
+  /**
    * Transforms success value.
    *
    * @template B Transformed type.
@@ -194,6 +205,17 @@ export class Ok<A, E = never> {
 export class Err<T, E> {
   readonly status = "error" as const;
   constructor(readonly error: E) {}
+
+  /**
+   * Coerces phantom success type. Useful for returning from typed functions.
+   * @example
+   * function getUser(): Result<User, NotFound> {
+   *   return Result.err(new NotFound()).intoOk(); // infers User from return type
+   * }
+   */
+  intoOk<T2>(): Err<T2, E> {
+    return this as unknown as Err<T2, E>;
+  }
 
   /**
    * No-op on Err, returns self with new phantom T.

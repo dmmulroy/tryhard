@@ -57,6 +57,58 @@ describe("Result", () => {
     });
   });
 
+  describe("Ok.intoErr / Err.intoOk methods", () => {
+    it("Ok.intoErr() returns same instance with coerced type", () => {
+      const ok = Result.ok(42);
+      const coerced = ok.intoErr<string>();
+      expect(coerced).toBe(ok); // same instance
+      expect(coerced.value).toBe(42);
+    });
+
+    it("Err.intoOk() returns same instance with coerced type", () => {
+      const err = Result.err("fail");
+      const coerced = err.intoOk<number>();
+      expect(coerced).toBe(err); // same instance
+      expect(coerced.error).toBe("fail");
+    });
+
+    it("intoErr() infers error type from function return signature", () => {
+      class AppError extends Error {}
+
+      function getUser(found: boolean): Result<number, AppError> {
+        if (found) {
+          return Result.ok(42).intoErr(); // infers AppError
+        }
+        return Result.err(new AppError());
+      }
+
+      const okResult = getUser(true);
+      expect(Result.isOk(okResult)).toBe(true);
+      expect(okResult.unwrap()).toBe(42);
+
+      const errResult = getUser(false);
+      expect(Result.isError(errResult)).toBe(true);
+    });
+
+    it("intoOk() infers success type from function return signature", () => {
+      class NotFound extends Error {}
+
+      function getUser(found: boolean): Result<{ id: number }, NotFound> {
+        if (!found) {
+          return Result.err(new NotFound()).intoOk(); // infers { id: number }
+        }
+        return Result.ok({ id: 1 });
+      }
+
+      const okResult = getUser(true);
+      expect(Result.isOk(okResult)).toBe(true);
+      expect(okResult.unwrap()).toEqual({ id: 1 });
+
+      const errResult = getUser(false);
+      expect(Result.isError(errResult)).toBe(true);
+    });
+  });
+
   describe("try", () => {
     it("returns Ok when function succeeds", () => {
       const result = Result.try(() => 42);

@@ -344,6 +344,8 @@ const result = Result.deserialize<User, ValidationError>(serialized);
 
 | Method                | Description                           |
 | --------------------- | ------------------------------------- |
+| `.intoOk()`           | Coerce phantom T type (Err only)      |
+| `.intoErr()`          | Coerce phantom E type (Ok only)       |
 | `.map(fn)`            | Transform success value               |
 | `.mapError(fn)`       | Transform error value                 |
 | `.andThen(fn)`        | Chain Result-returning function       |
