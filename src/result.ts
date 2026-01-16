@@ -204,6 +204,42 @@ export class Ok<A, E = never> {
   }
 
   /**
+   * No-op on Ok, returns self wrapped in Promise with new phantom error type.
+   *
+   * @template T2 New success type (unused).
+   * @template E2 New error type.
+   * @param _fn Ignored.
+   * @returns Promise of self with updated phantom E type.
+   *
+   * @example
+   * await ok(42).orElseAsync(async () => ok(0)) // Ok(42)
+   */
+  orElseAsync<T2, E2>(_fn: (e: E) => Promise<Result<T2, E2>>): Promise<Result<A | T2, E2>> {
+    // SAFETY: E is phantom on Ok (not used at runtime).
+    return Promise.resolve(this as unknown as Ok<A, E2>);
+  }
+
+  /**
+   * No-op on Ok, returns self wrapped in Promise with new phantom error type.
+   *
+   * @template T2 New success type (unused).
+   * @template E2 New error type.
+   * @param _options Ignored.
+   * @returns Promise of self with updated phantom E type.
+   *
+   * @example
+   * await ok(42).orElseTryPromise(async () => fetch(url)) // Ok(42)
+   */
+  orElseTryPromise<T2, E2 = UnhandledException>(
+    _options:
+      | ((e: E) => Promise<T2>)
+      | { try: (e: E) => Promise<T2>; catch: (cause: unknown) => E2; retry?: RetryConfig["retry"] },
+  ): Promise<Result<A | T2, E2>> {
+    // SAFETY: E is phantom on Ok (not used at runtime).
+    return Promise.resolve(this as unknown as Ok<A, E2>);
+  }
+
+  /**
    * Makes Ok yieldable in Result.gen blocks.
    * Immediately returns the value without yielding.
    * Yield type Err<never, E> matches Err's for proper union inference.
@@ -386,6 +422,54 @@ export class Err<T, E> {
           ? tryFn(() => options(error))
           : tryFn({ try: () => options.try(error), catch: options.catch })) as Result<T2, E2>,
     );
+  }
+
+  /**
+   * Calls async fn with error to produce a fallback Result.
+   *
+   * @template T2 Fallback success type.
+   * @template E2 Fallback error type.
+   * @param fn Async fallback function receiving the error.
+   * @returns Promise of Result from fn.
+   *
+   * @example
+   * await err("fail").orElseAsync(async e => ok(await fetchBackup()))
+   */
+  orElseAsync<T2, E2>(fn: (e: E) => Promise<Result<T2, E2>>): Promise<Result<T | T2, E2>> {
+    return fn(this.error);
+  }
+
+  /**
+   * Calls async fallback function wrapped in try/catch to produce a fallback Result.
+   * Supports retry configuration.
+   *
+   * @template T2 Fallback success type.
+   * @template E2 Fallback error type.
+   * @param options Async fallback thunk or { try, catch, retry? } object.
+   * @returns Promise of Result from try/catch wrapped fallback.
+   *
+   * @example
+   * await err("fail").orElseTryPromise(async () => fetch(backupUrl))
+   * await err("fail").orElseTryPromise({
+   *   try: async e => fetch(backupUrl).then(r => r.json()),
+   *   catch: () => new Error("Backup failed"),
+   *   retry: { times: 3, delayMs: 100, backoff: "exponential" }
+   * })
+   */
+  orElseTryPromise<T2, E2 = UnhandledException>(
+    options:
+      | ((e: E) => Promise<T2>)
+      | { try: (e: E) => Promise<T2>; catch: (cause: unknown) => E2; retry?: RetryConfig["retry"] },
+  ): Promise<Result<T | T2, E2>> {
+    return this.orElseAsync((error): Promise<Result<T2, E2>> => {
+      if (typeof options === "function") {
+        return tryPromise(() => options(error)) as Promise<Result<T2, E2>>;
+      }
+      return tryPromise(
+        { try: () => options.try(error), catch: options.catch },
+        options.retry ? { retry: options.retry } : undefined,
+      ) as Promise<Result<T2, E2>>;
+    });
   }
 
   /**
@@ -674,6 +758,48 @@ const orElseTry: {
     options: ((e: E) => T2) | { try: (e: E) => T2; catch: (cause: unknown) => E2 },
   ): Result<A | T2, E2> => {
     return result.orElseTry(options);
+  },
+);
+
+const orElseAsync: {
+  <A, E, T2, E2>(
+    result: Result<A, E>,
+    fn: (e: E) => Promise<Result<T2, E2>>,
+  ): Promise<Result<A | T2, E2>>;
+  <E, T2, E2>(
+    fn: (e: E) => Promise<Result<T2, E2>>,
+  ): <A>(result: Result<A, E>) => Promise<Result<A | T2, E2>>;
+} = dual(
+  2,
+  <A, E, T2, E2>(
+    result: Result<A, E>,
+    fn: (e: E) => Promise<Result<T2, E2>>,
+  ): Promise<Result<A | T2, E2>> => {
+    return result.orElseAsync(fn);
+  },
+);
+
+const orElseTryPromise: {
+  <A, E, T2, E2 = UnhandledException>(
+    result: Result<A, E>,
+    options:
+      | ((e: E) => Promise<T2>)
+      | { try: (e: E) => Promise<T2>; catch: (cause: unknown) => E2; retry?: RetryConfig["retry"] },
+  ): Promise<Result<A | T2, E2>>;
+  <E, T2, E2 = UnhandledException>(
+    options:
+      | ((e: E) => Promise<T2>)
+      | { try: (e: E) => Promise<T2>; catch: (cause: unknown) => E2; retry?: RetryConfig["retry"] },
+  ): <A>(result: Result<A, E>) => Promise<Result<A | T2, E2>>;
+} = dual(
+  2,
+  <A, E, T2, E2 = UnhandledException>(
+    result: Result<A, E>,
+    options:
+      | ((e: E) => Promise<T2>)
+      | { try: (e: E) => Promise<T2>; catch: (cause: unknown) => E2; retry?: RetryConfig["retry"] },
+  ): Promise<Result<A | T2, E2>> => {
+    return result.orElseTryPromise(options);
   },
 );
 
@@ -970,6 +1096,26 @@ export const Result = {
    * })(err("fail"))
    */
   orElseTry,
+  /**
+   * Async recovery on error.
+   *
+   * @example
+   * await Result.orElseAsync(err("fail"), async e => ok(await fetchBackup()))
+   * await Result.orElseAsync(async e => ok(await fetchBackup()))(err("fail"))
+   */
+  orElseAsync,
+  /**
+   * Async try/catch recovery on error. Supports retry.
+   *
+   * @example
+   * await Result.orElseTryPromise(err("fail"), async e => fetch(backupUrl))
+   * await Result.orElseTryPromise({
+   *   try: async e => fetch(backupUrl).then(r => r.json()),
+   *   catch: () => new Error("Backup failed"),
+   *   retry: { times: 3, delayMs: 100, backoff: "exponential" }
+   * })(err("fail"))
+   */
+  orElseTryPromise,
   /**
    * Generator-based composition for Result types.
    *
