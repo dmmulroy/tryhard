@@ -34,6 +34,16 @@ export class Ok<A, E = never> {
   readonly status = "ok" as const;
   constructor(readonly value: A) {}
 
+  /** Returns true, narrowing Result to Ok. */
+  isOk(): this is Ok<A, E> {
+    return true;
+  }
+
+  /** Returns false, narrowing Result to Err. */
+  isErr(): this is Err<A, E> {
+    return false;
+  }
+
   /**
    * Transforms success value.
    *
@@ -194,6 +204,16 @@ export class Ok<A, E = never> {
 export class Err<T, E> {
   readonly status = "error" as const;
   constructor(readonly error: E) {}
+
+  /** Returns false, narrowing Result to Ok. */
+  isOk(): this is Ok<T, E> {
+    return false;
+  }
+
+  /** Returns true, narrowing Result to Err. */
+  isErr(): this is Err<T, E> {
+    return true;
+  }
 
   /**
    * No-op on Err, returns self with new phantom T.

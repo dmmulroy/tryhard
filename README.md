@@ -344,6 +344,8 @@ const result = Result.deserialize<User, ValidationError>(serialized);
 
 | Method                | Description                           |
 | --------------------- | ------------------------------------- |
+| `.isOk()`             | Type guard, narrows to Ok             |
+| `.isErr()`            | Type guard, narrows to Err            |
 | `.map(fn)`            | Transform success value               |
 | `.mapError(fn)`       | Transform error value                 |
 | `.andThen(fn)`        | Chain Result-returning function       |

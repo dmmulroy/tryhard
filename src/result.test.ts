@@ -57,6 +57,72 @@ describe("Result", () => {
     });
   });
 
+  describe("Ok.isOk / Ok.isErr methods", () => {
+    it("Ok.isOk() returns true", () => {
+      const ok = Result.ok(42);
+      expect(ok.isOk()).toBe(true);
+    });
+
+    it("Ok.isErr() returns false", () => {
+      const ok = Result.ok(42);
+      expect(ok.isErr()).toBe(false);
+    });
+
+    it("Err.isOk() returns false", () => {
+      const err = Result.err("fail");
+      expect(err.isOk()).toBe(false);
+    });
+
+    it("Err.isErr() returns true", () => {
+      const err = Result.err("fail");
+      expect(err.isErr()).toBe(true);
+    });
+
+    it("narrows Result to Ok when isOk() returns true", () => {
+      const result: Result<number, string> = Result.ok(42);
+      if (result.isOk()) {
+        // Type should be narrowed to Ok<number, string>
+        const value: number = result.value;
+        expect(value).toBe(42);
+      } else {
+        expect.unreachable("should be Ok");
+      }
+    });
+
+    it("narrows Result to Err when isOk() returns false", () => {
+      const result: Result<number, string> = Result.err("fail");
+      if (!result.isOk()) {
+        // Type should be narrowed to Err<number, string>
+        const error: string = result.error;
+        expect(error).toBe("fail");
+      } else {
+        expect.unreachable("should be Err");
+      }
+    });
+
+    it("narrows Result to Err when isErr() returns true", () => {
+      const result: Result<number, string> = Result.err("fail");
+      if (result.isErr()) {
+        // Type should be narrowed to Err<number, string>
+        const error: string = result.error;
+        expect(error).toBe("fail");
+      } else {
+        expect.unreachable("should be Err");
+      }
+    });
+
+    it("narrows Result to Ok when isErr() returns false", () => {
+      const result: Result<number, string> = Result.ok(42);
+      if (!result.isErr()) {
+        // Type should be narrowed to Ok<number, string>
+        const value: number = result.value;
+        expect(value).toBe(42);
+      } else {
+        expect.unreachable("should be Ok");
+      }
+    });
+  });
+
   describe("try", () => {
     it("returns Ok when function succeeds", () => {
       const result = Result.try(() => 42);
@@ -1046,6 +1112,7 @@ describe("Result", () => {
       expect(Result.hydrate(42)).toBe(null);
     });
   });
+
 });
 
 describe("Monad Laws", () => {
