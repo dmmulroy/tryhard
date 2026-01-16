@@ -577,6 +577,234 @@ describe("Result", () => {
     });
   });
 
+  describe("orElseAsync", () => {
+    describe("Ok", () => {
+      it("returns self wrapped in Promise, does not call fn", async () => {
+        const fn = vi.fn();
+        const result = await Result.ok(42).orElseAsync(fn);
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+        expect(fn).not.toHaveBeenCalled();
+      });
+
+      it("preserves value through async orElse", async () => {
+        const result = await Result.ok("hello").orElseAsync(async () => Result.ok("world"));
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<string, never>).value).toBe("hello");
+      });
+    });
+
+    describe("Err", () => {
+      it("calls fn with error and returns new Ok", async () => {
+        const result = await Result.err("fail").orElseAsync(async (e) => Result.ok(e.length));
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(4);
+      });
+
+      it("calls fn with error and returns new Err", async () => {
+        const result = await Result.err("fail").orElseAsync(async (e) => Result.err(new Error(e)));
+
+        expect(result.status).toBe("error");
+        expect((result as Err<never, Error>).error.message).toBe("fail");
+      });
+
+      it("receives the error value in callback", async () => {
+        const fn = vi.fn().mockResolvedValue(Result.ok(0));
+        const error = new Error("test error");
+        await Result.err(error).orElseAsync(fn);
+
+        expect(fn).toHaveBeenCalledWith(error);
+      });
+    });
+
+    describe("static dual function", () => {
+      it("works data-first", async () => {
+        const result = await Result.orElseAsync(Result.err("fail"), async () => Result.ok(42));
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+      });
+
+      it("works data-last (pipeable)", async () => {
+        const recover = Result.orElseAsync(async () => Result.ok(42));
+        const result = await recover(Result.err("fail"));
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+      });
+    });
+  });
+
+  describe("orElseTryPromise", () => {
+    describe("Ok", () => {
+      it("returns self wrapped in Promise, does not call fn", async () => {
+        const fn = vi.fn();
+        const result = await Result.ok(42).orElseTryPromise(fn);
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+        expect(fn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("Err with simple function", () => {
+      it("returns Ok when promise resolves", async () => {
+        const result = await Result.err("fail").orElseTryPromise(async () => 42);
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+      });
+
+      it("returns UnhandledException when promise rejects", async () => {
+        const error = new Error("async fail");
+        const result = await Result.err("fail").orElseTryPromise(async () => {
+          throw error;
+        });
+
+        expect(result.status).toBe("error");
+        expect((result as Err<never, UnhandledException>).error).toBeInstanceOf(UnhandledException);
+        expect((result as Err<never, UnhandledException>).error.cause).toBe(error);
+      });
+
+      it("receives error value in callback", async () => {
+        const result = await Result.err("test").orElseTryPromise(async (e) => e.toUpperCase());
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<string, never>).value).toBe("TEST");
+      });
+    });
+
+    describe("Err with object form", () => {
+      it("returns Ok when promise resolves", async () => {
+        const result = await Result.err("fail").orElseTryPromise({
+          try: async () => 42,
+          catch: () => new Error("should not be called"),
+        });
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+      });
+
+      it("uses custom catch handler when promise rejects", async () => {
+        const result = await Result.err("fail").orElseTryPromise({
+          try: async () => {
+            throw new Error("original");
+          },
+          catch: (cause) => new Error(`caught: ${(cause as Error).message}`),
+        });
+
+        expect(result.status).toBe("error");
+        expect((result as Err<never, Error>).error.message).toBe("caught: original");
+      });
+
+      it("receives error value in try callback", async () => {
+        const result = await Result.err("prefix").orElseTryPromise({
+          try: async (e) => `${e}-suffix`,
+          catch: () => new Error("fail"),
+        });
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<string, never>).value).toBe("prefix-suffix");
+      });
+    });
+
+    describe("retry support", () => {
+      it("retries on failure and eventually succeeds", async () => {
+        let attempts = 0;
+        const result = await Result.err("fail").orElseTryPromise({
+          try: async () => {
+            attempts++;
+            if (attempts < 3) throw new Error("not yet");
+            return "success";
+          },
+          catch: () => new Error("all retries failed"),
+          retry: { times: 3, delayMs: 10, backoff: "constant" },
+        });
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<string, never>).value).toBe("success");
+        expect(attempts).toBe(3);
+      });
+
+      it("returns error after all retries fail", async () => {
+        let attempts = 0;
+        const result = await Result.err("fail").orElseTryPromise({
+          try: async () => {
+            attempts++;
+            throw new Error("always fails");
+          },
+          catch: () => new Error("all retries failed"),
+          retry: { times: 2, delayMs: 10, backoff: "constant" },
+        });
+
+        expect(result.status).toBe("error");
+        expect((result as Err<never, Error>).error.message).toBe("all retries failed");
+        expect(attempts).toBe(3); // 1 initial + 2 retries
+      });
+    });
+
+    describe("static dual function", () => {
+      it("works data-first", async () => {
+        const result = await Result.orElseTryPromise(Result.err("fail"), async () => 42);
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+      });
+
+      it("works data-last (pipeable)", async () => {
+        const recover = Result.orElseTryPromise(async () => 42);
+        const result = await recover(Result.err("fail"));
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<number, never>).value).toBe(42);
+      });
+
+      it("works with retry in pipeable form", async () => {
+        let attempts = 0;
+        const recover = Result.orElseTryPromise({
+          try: async () => {
+            attempts++;
+            if (attempts < 2) throw new Error("not yet");
+            return "success";
+          },
+          catch: () => new Error("failed"),
+          retry: { times: 2, delayMs: 10, backoff: "constant" },
+        });
+
+        const result = await recover(Result.err("fail"));
+
+        expect(result.status).toBe("ok");
+        expect((result as Ok<string, never>).value).toBe("success");
+      });
+    });
+
+    describe("integration", () => {
+      it("async fallback chain pattern", async () => {
+        const fetchWithFallback = (shouldFail: boolean) =>
+          Result.tryPromise(async () => {
+            if (shouldFail) throw new Error("primary failed");
+            return "primary";
+          }).then((r) =>
+            r.orElseTryPromise({
+              try: async () => "backup",
+              catch: () => new Error("backup also failed"),
+            }),
+          );
+
+        const primary = await fetchWithFallback(false);
+        expect(primary.status).toBe("ok");
+        expect((primary as Ok<string, never>).value).toBe("primary");
+
+        const backup = await fetchWithFallback(true);
+        expect(backup.status).toBe("ok");
+        expect((backup as Ok<string, never>).value).toBe("backup");
+      });
+    });
+  });
+
   describe("tap", () => {
     it("runs side effect on Ok", () => {
       let captured = 0;
