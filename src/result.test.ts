@@ -1113,6 +1113,63 @@ describe("Result", () => {
     });
   });
 
+  describe("flatten", () => {
+    it("flattens Ok(Ok(value)) to Ok(value)", () => {
+      const nested = Result.ok(Result.ok(42));
+      const flat = Result.flatten(nested);
+      expect(Result.isOk(flat)).toBe(true);
+      expect(flat.unwrap()).toBe(42);
+    });
+
+    it("flattens Ok(Err(error)) to Err(error)", () => {
+      const nested = Result.ok(Result.err("inner error"));
+      const flat = Result.flatten(nested);
+      expect(Result.isError(flat)).toBe(true);
+      if (Result.isError(flat)) {
+        expect(flat.error).toBe("inner error");
+      }
+    });
+
+    it("flattens Err(outerError) to Err(outerError)", () => {
+      const nested: Result<Result<number, string>, string> = Result.err("outer error");
+      const flat = Result.flatten(nested);
+      expect(Result.isError(flat)).toBe(true);
+      if (Result.isError(flat)) {
+        expect(flat.error).toBe("outer error");
+      }
+    });
+
+    it("correctly unions error types", () => {
+      class InnerError extends Error {
+        readonly _tag = "InnerError" as const;
+      }
+      class OuterError extends Error {
+        readonly _tag = "OuterError" as const;
+      }
+
+      const okOk: Result<Result<number, InnerError>, OuterError> = Result.ok(Result.ok(42));
+      const okErr: Result<Result<number, InnerError>, OuterError> = Result.ok(
+        Result.err(new InnerError()),
+      );
+      const errOuter: Result<Result<number, InnerError>, OuterError> = Result.err(new OuterError());
+
+      // All flatten to Result<number, InnerError | OuterError>
+      const flat1: Result<number, InnerError | OuterError> = Result.flatten(okOk);
+      const flat2: Result<number, InnerError | OuterError> = Result.flatten(okErr);
+      const flat3: Result<number, InnerError | OuterError> = Result.flatten(errOuter);
+
+      expect(Result.isOk(flat1)).toBe(true);
+      expect(Result.isError(flat2)).toBe(true);
+      expect(Result.isError(flat3)).toBe(true);
+
+      if (Result.isError(flat2)) {
+        expect(flat2.error._tag).toBe("InnerError");
+      }
+      if (Result.isError(flat3)) {
+        expect(flat3.error._tag).toBe("OuterError");
+      }
+    });
+  });
 });
 
 describe("Monad Laws", () => {

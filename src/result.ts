@@ -759,6 +759,21 @@ const partition = <T, E>(results: readonly Result<T, E>[]): [T[], E[]] => {
 };
 
 /**
+ * Flattens nested Result into single Result.
+ *
+ * @example
+ * const nested: Result<Result<number, E1>, E2> = Result.ok(Result.ok(42));
+ * const flat: Result<number, E1 | E2> = Result.flatten(nested); // Ok(42)
+ */
+const flatten = <T, E, E2>(result: Result<Result<T, E>, E2>): Result<T, E | E2> => {
+  if (result.status === "ok") {
+    return result.value;
+  }
+  // SAFETY: T is phantom on Err (not used at runtime), widening E2 to E|E2 is safe
+  return result as unknown as Err<T, E | E2>;
+};
+
+/**
  * Utilities for creating and handling Result types.
  *
  * @example
@@ -930,4 +945,12 @@ export const Result = {
    * partition([ok(1), err("a"), ok(2)]) // [[1, 2], ["a"]]
    */
   partition,
+  /**
+   * Flattens nested Result into single Result.
+   *
+   * @example
+   * const nested = Result.ok(Result.ok(42));
+   * Result.flatten(nested) // Ok(42)
+   */
+  flatten,
 } as const;

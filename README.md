@@ -340,6 +340,7 @@ const result = Result.deserialize<User, ValidationError>(serialized);
 | `Result.serialize(result)`       | Convert Result to plain object          |
 | `Result.deserialize(value)`      | Rehydrate serialized Result             |
 | `Result.partition(results)`      | Split array into [okValues, errValues]  |
+| `Result.flatten(result)`         | Flatten nested Result                   |
 
 ### Instance Methods
 
