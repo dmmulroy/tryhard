@@ -1,4 +1,22 @@
 {
+  "$schema": "https://context7.com/schema/context7.json",
   "url": "https://context7.com/dmmulroy/better-result",
-  "public_key": "pk_eoke1PL003hY7cji9Cehq"
+  "public_key": "pk_eoke1PL003hY7cji9Cehq",
+  "projectTitle": "better-result",
+  "description": "Lightweight TypeScript Result type with generator-based composition for functional error handling via Ok/Err discriminated union",
+  "folders": ["src"],
+  "excludeFolders": ["dist", "opensrc", "node_modules"],
+  "excludeFiles": [],
+  "rules": [
+    "Use Result.gen with yield* for composing multiple Result-returning operations - enables railway-oriented programming with early return on errors; reads imperatively despite being functional",
+    "Use Result.await to yield Promise<Result> in async generators - required for async operations inside Result.gen",
+    "Extend TaggedError(\"YourError\") for discriminated error types - creates errors with _tag property for exhaustive matching",
+    "Return Result.ok() or Result.err() at the end of Result.gen blocks - generators must return a Result, not a plain value",
+    "Use Result.try with a catch handler to convert exceptions to typed errors - e.g., Result.try({ try: () => parse(x), catch: e => new ParseError(e) })",
+    "Use Result.tryPromise for async operations with optional retry - supports { retry: { times, delayMs, backoff } } with constant/linear/exponential backoff",
+    "Use .match({ ok, err }) for exhaustive handling of both Result variants - forces handling success and error cases explicitly",
+    "Use matchError for exhaustive pattern matching on TaggedError unions - compiler enforces handling all error variants",
+    "Prefer unwrapOr over unwrap to provide fallback values - unwrap throws on Err",
+    "All combinators support dual API: fn(result, arg) and fn(arg)(result) - both data-first and pipeable styles work"
+  ]
 }
