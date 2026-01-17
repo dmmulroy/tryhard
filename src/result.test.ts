@@ -1302,10 +1302,11 @@ describe("Type Inference", () => {
 
   describe("Err.map preserves error type", () => {
     it("map on Err returns Err with same error, transformed T", () => {
-      const r: Result<number, ErrorA> = Result.err(new ErrorA("original"));
+      const r = Result.err<number, ErrorA>(new ErrorA("original"));
 
-      // map should return Result<string, ErrorA> - error preserved
-      const mapped: Result<string, ErrorA> = r.map((n) => n.toString());
+      // map should return Err<string, ErrorA> - error preserved
+      // Note: callback parameter is `never` because Err.map never calls it
+      const mapped: Result<string, ErrorA> = r.map((): string => "unreachable");
 
       expect(Result.isError(mapped)).toBe(true);
       if (Result.isError(mapped)) {
@@ -1438,6 +1439,104 @@ describe("Type Inference", () => {
         [1, 2],
         ["a", "b"],
       ]);
+    });
+  });
+
+  describe("phantom type covariance", () => {
+    // These tests verify that Err is covariant in T (phantom success type)
+    // and Ok is covariant in E (phantom error type), enabling early returns
+    // without manual type coercion.
+
+    it("Err with different phantom T is assignable to Result with wider T", () => {
+      function getNumber(): Result<number, "not_found"> {
+        return Result.err("not_found");
+      }
+
+      function numberToString(): Result<string, "not_found"> {
+        const result = getNumber();
+        if (result.isErr()) {
+          // Err<number, "not_found"> should be assignable to Result<string, "not_found">
+          // because T is phantom on Err
+          return result;
+        }
+        return Result.ok(result.value.toString());
+      }
+
+      const r = numberToString();
+      expect(Result.isError(r)).toBe(true);
+      if (Result.isError(r)) {
+        expect(r.error).toBe("not_found");
+      }
+    });
+
+    it("Ok with narrower phantom E is assignable to Result with wider E", () => {
+      function getNumber(): Result<number, "a"> {
+        return Result.ok(42);
+      }
+
+      function widen(): Result<number, "a" | "b" | "c"> {
+        const result = getNumber();
+        if (result.isOk()) {
+          // Ok<number, "a"> should be assignable to Result<number, "a" | "b" | "c">
+          // because E is phantom on Ok
+          return result;
+        }
+        return Result.err("b");
+      }
+
+      const r = widen();
+      expect(Result.isOk(r)).toBe(true);
+      expect(r.unwrap()).toBe(42);
+    });
+
+    it("multiple Err early returns with different phantom T types", () => {
+      function getNumber(): Result<number, "num_err"> {
+        return Result.err("num_err");
+      }
+
+      function getString(): Result<string, "str_err"> {
+        return Result.ok("hello");
+      }
+
+      function combined(): Result<{ n: number; s: string }, "num_err" | "str_err"> {
+        const numResult = getNumber();
+        if (numResult.isErr()) {
+          // Err<number, "num_err"> -> Result<{n,s}, "num_err" | "str_err">
+          return numResult;
+        }
+
+        const strResult = getString();
+        if (strResult.isErr()) {
+          // Err<string, "str_err"> -> Result<{n,s}, "num_err" | "str_err">
+          return strResult;
+        }
+
+        return Result.ok({ n: numResult.value, s: strResult.value });
+      }
+
+      const r = combined();
+      expect(Result.isError(r)).toBe(true);
+      if (Result.isError(r)) {
+        expect(r.error).toBe("num_err");
+      }
+    });
+
+    it("Err.map callback parameter is never (not called)", () => {
+      const err = Result.err<number, string>("fail");
+      // Callback is typed as (a: never) => U, reflecting it's never called
+      const mapped = err.map((): string => "unreachable");
+      expect(Result.isError(mapped)).toBe(true);
+      if (Result.isError(mapped)) {
+        expect(mapped.error).toBe("fail");
+      }
+    });
+
+    it("Ok.mapError callback parameter is never (not called)", () => {
+      const ok = Result.ok<number, string>(42);
+      // Callback is typed as (e: never) => E2, reflecting it's never called
+      const mapped = ok.mapError((): number => -1);
+      expect(Result.isOk(mapped)).toBe(true);
+      expect(mapped.unwrap()).toBe(42);
     });
   });
 });

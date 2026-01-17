@@ -206,7 +206,7 @@ export class Err<T, E> {
   constructor(readonly error: E) {}
 
   /** Returns false, narrowing Result to Ok. */
-  isOk(): this is Ok<T, E> {
+  isOk(): this is Ok<never, E> {
     return false;
   }
 
@@ -222,7 +222,7 @@ export class Err<T, E> {
    * @param _fn Ignored.
    * @returns Self.
    */
-  map<U>(_fn: (a: T) => U): Err<U, E> {
+  map<U>(_fn: (a: never) => U): Err<U, E> {
     // SAFETY: T is phantom (not used at runtime). Err only holds `error: E`.
     return this as unknown as Err<U, E>;
   }
@@ -250,7 +250,7 @@ export class Err<T, E> {
    * @param _fn Ignored.
    * @returns Self.
    */
-  andThen<U, E2>(_fn: (a: T) => Result<U, E2>): Err<U, E | E2> {
+  andThen<U, E2>(_fn: (a: never) => Result<U, E2>): Err<U, E | E2> {
     // SAFETY: T is phantom, E⊂(E|E2) so error type widens safely.
     return this as unknown as Err<U, E | E2>;
   }
@@ -263,7 +263,7 @@ export class Err<T, E> {
    * @param _fn Ignored.
    * @returns Promise of self.
    */
-  andThenAsync<U, E2>(_fn: (a: T) => Promise<Result<U, E2>>): Promise<Err<U, E | E2>> {
+  andThenAsync<U, E2>(_fn: (a: never) => Promise<Result<U, E2>>): Promise<Err<U, E | E2>> {
     // SAFETY: T is phantom, E⊂(E|E2) so error type widens safely.
     return Promise.resolve(this as unknown as Err<U, E | E2>);
   }
@@ -279,7 +279,7 @@ export class Err<T, E> {
    * @example
    * err("fail").match({ ok: x => x, err: e => e.length }) // 4
    */
-  match<R>(handlers: { ok: (a: T) => R; err: (e: E) => R }): R {
+  match<R>(handlers: { ok: (a: never) => R; err: (e: E) => R }): R {
     return tryOrPanic(() => handlers.err(this.error), "match err handler threw");
   }
 
@@ -317,7 +317,7 @@ export class Err<T, E> {
    * @param _fn Ignored.
    * @returns Self.
    */
-  tap(_fn: (a: T) => void): Err<T, E> {
+  tap(_fn: (a: never) => void): Err<T, E> {
     return this;
   }
 
@@ -327,7 +327,7 @@ export class Err<T, E> {
    * @param _fn Ignored.
    * @returns Promise of self.
    */
-  tapAsync(_fn: (a: T) => Promise<void>): Promise<Err<T, E>> {
+  tapAsync(_fn: (a: never) => Promise<void>): Promise<Err<T, E>> {
     return Promise.resolve(this);
   }
 
@@ -335,7 +335,7 @@ export class Err<T, E> {
    * Makes Err yieldable in Result.gen blocks.
    * Yields Err<never, E> for proper union inference across multiple yields.
    */
-  *[Symbol.iterator](): Generator<Err<never, E>, T, unknown> {
+  *[Symbol.iterator](): Generator<Err<never, E>, never, unknown> {
     // SAFETY: T is phantom (not used at runtime). Casting to Err<never, E>
     // ensures all yields have phantom T as `never`, enabling TypeScript to
     // unify: Err<never, E1> | Err<never, E2> extracts to E1 | E2
