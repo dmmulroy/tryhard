@@ -348,6 +348,71 @@ describe("Result", () => {
         ),
       ).rejects.toBeInstanceOf(Panic);
     });
+
+    it("supports dynamic retry config function", async () => {
+      let attempts = 0;
+      const result = await Result.tryPromise(
+        {
+          try: () => {
+            attempts++;
+            if (attempts < 3) throw new Error("fail");
+            return Promise.resolve("success");
+          },
+          catch: (e) => ({ msg: (e as Error).message }),
+        },
+        {
+          retry: () => ({ times: 3, delayMs: 1, backoff: "constant" }),
+        },
+      );
+
+      expect(Result.isOk(result)).toBe(true);
+      expect(attempts).toBe(3);
+      expect(result.unwrap()).toBe("success");
+    });
+
+    it("dynamic retry config receives error and can vary behavior", async () => {
+      let attempts = 0;
+      const result = await Result.tryPromise(
+        {
+          try: () => {
+            attempts++;
+            throw new Error(attempts === 1 ? "retryable" : "fatal");
+          },
+          catch: (e) => ({
+            retryable: (e as Error).message === "retryable",
+            msg: (e as Error).message,
+          }),
+        },
+        {
+          retry: (error) =>
+            error.retryable
+              ? { times: 3, delayMs: 1, backoff: "constant" }
+              : { times: 0, delayMs: 0, backoff: "constant" },
+        },
+      );
+
+      expect(attempts).toBe(2);
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error.msg).toBe("fatal");
+      }
+    });
+
+    it("throws Panic when retry config function throws", async () => {
+      await expect(
+        Result.tryPromise(
+          {
+            try: () => Promise.reject(new Error("fail")),
+            catch: (e) => ({ msg: (e as Error).message }),
+          },
+          {
+            retry: () => {
+              throw new Error("config function bug");
+            },
+          },
+        ),
+      ).rejects.toBeInstanceOf(Panic);
+    });
   });
 
   describe("map", () => {
