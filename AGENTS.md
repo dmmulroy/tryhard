@@ -45,7 +45,7 @@ better-result/
 | `Result` namespace  | obj   | result.ts:782  | Static combinators             |
 | `Result.gen`        | fn    | result.ts:594  | Generator-based composition    |
 | `Result.try`        | fn    | result.ts:400  | Wrap sync throwing fn          |
-| `Result.tryPromise` | fn    | result.ts:448  | Wrap async throwing fn + retry |
+| `Result.tryPromise` | fn    | result.ts:453  | Wrap async throwing fn + retry (static or dynamic config) |
 | `TaggedError`       | fn    | error.ts:35    | Factory for discriminated errors |
 | `UnhandledException`| class | error.ts:186   | Wrapper for uncaught exceptions|
 | `Panic`             | class | error.ts:215   | Unrecoverable error (throws)   |

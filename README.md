@@ -241,6 +241,35 @@ const result = await Result.tryPromise(
 );
 ```
 
+### Dynamic Retry Config
+
+The `retry` option can be a function that receives the error and returns retry options, enabling different strategies per error type:
+
+```ts
+class HttpError extends TaggedError("HttpError")<{ response: Response; message: string }>() {}
+
+const result = await Result.tryPromise(
+  {
+    try: () => fetchRateLimitedData(url),
+    catch: (e) => new HttpError({ response: e.response, message: "Request failed" }),
+  },
+  {
+    retry: (error) => {
+      if (error.response.status === 429) {
+        // Rate limited: dynamic backoff based on header
+        return { times: 10, delayMs: error.response.headers.get('x-retry-after'), backoff: "constant" };
+      }
+      if (error.response.status >= 500) {
+        // Server error: few retries with constant delay
+        return { times: 2, delayMs: 500, backoff: "constant" };
+      }
+      // Client errors (4xx): don't retry
+      return { times: 0, delayMs: 0, backoff: "constant" };
+    },
+  },
+);
+```
+
 ## UnhandledException
 
 When `Result.try()` or `Result.tryPromise()` catches an exception without a custom handler, the error type is `UnhandledException`:
