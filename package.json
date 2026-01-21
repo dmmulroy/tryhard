@@ -1,6 +1,6 @@
 {
   "name": "better-result",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Lightweight Result type with generator-based composition",
   "keywords": [
     "error-handling",
