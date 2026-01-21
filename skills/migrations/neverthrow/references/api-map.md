@@ -19,7 +19,7 @@
 | neverthrow | better-result | Notes |
 | --- | --- | --- |
 | `Ok` / `Err` | `Ok` / `Err` | Same class names; better-result uses `status: "ok" | "error"`. |
-| `isOk()` / `isErr()` | `isOk()` / `isErr()` | Instance type guards. |
+| `isOk()` / `isErr()` | `isOk()` / `isErr()` | Instance type guards in both; better-result also adds static guards (`Result.isOk(result)`, `Result.isError(result)`). neverthrow has no static guards. |
 | `map` | `map` | Same behavior on Ok. |
 | `andThen` | `andThen` | Same behavior; error unions widen. |
 | `unwrapOr` | `unwrapOr` | Same behavior. |
@@ -51,7 +51,7 @@
 | `_unsafeUnwrap` / `_unsafeUnwrapErr` | `unwrap` or `match` in tests | `unwrap` throws `Panic` on Err. |
 
 ## Better-result helpers without neverthrow equivalents
-- `Result.isOk(result)` and `Result.isError(result)` for static type guards.
+- Static type guards: `Result.isOk(result)` and `Result.isError(result)`. neverthrow only provides this at the instance level (`result.isOk()` / `result.isErr()`).
 
 ## Import mapping
 
