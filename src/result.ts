@@ -294,7 +294,7 @@ export class Err<T, E> {
    * err("fail").unwrap("custom") // throws Error("custom")
    */
   unwrap(message?: string): never {
-    return panic(message ?? `Unwrap called on Err: ${String(this.error)}`);
+    return panic(message ?? `Unwrap called on Err: ${String(this.error)}`, this.error);
   }
 
   /**
@@ -340,7 +340,7 @@ export class Err<T, E> {
     // ensures all yields have phantom T as `never`, enabling TypeScript to
     // unify: Err<never, E1> | Err<never, E2> extracts to E1 | E2
     yield this as unknown as Err<never, E>;
-    return panic("Unreachable: Err yielded in Result.gen but generator continued");
+    return panic("Unreachable: Err yielded in Result.gen but generator continued", this.error);
   }
 }
 
