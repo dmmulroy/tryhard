@@ -19,15 +19,15 @@
     "type": "git",
     "url": "https://github.com/dmmulroy/better-result"
   },
-  "files": [
-    "dist",
-    "src",
-    "skills",
-    "bin"
-  ],
   "bin": {
     "better-result": "./bin/cli.mjs"
   },
+  "files": [
+    "bin",
+    "dist",
+    "skills",
+    "src"
+  ],
   "type": "module",
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
@@ -49,14 +49,14 @@
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check ."
   },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "oxfmt": "^0.23.0",
     "oxlint": "^1.38.0",
     "tsdown": "^0.19.0-beta.5",
     "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "@clack/prompts": "^0.11.0"
   }
 }

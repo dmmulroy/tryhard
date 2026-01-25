@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { TaggedError, UnhandledException, matchError, matchErrorPartial, isTaggedError } from "./error";
+import {
+  TaggedError,
+  UnhandledException,
+  matchError,
+  matchErrorPartial,
+  isTaggedError,
+} from "./error";
 
 class NotFoundError extends TaggedError("NotFoundError")<{
   id: string;
@@ -163,7 +169,10 @@ describe("TaggedError", () => {
     });
 
     it("matches NetworkError", () => {
-      const error: AppError = new NetworkError({ url: "https://api.example.com", message: "failed" });
+      const error: AppError = new NetworkError({
+        url: "https://api.example.com",
+        message: "failed",
+      });
       expect(matchAppError(error)).toBe("network: https://api.example.com");
     });
 
@@ -219,7 +228,10 @@ describe("TaggedError", () => {
     });
 
     it("falls back for unhandled tag", () => {
-      const error: AppError = new NetworkError({ url: "https://api.example.com", message: "failed" });
+      const error: AppError = new NetworkError({
+        url: "https://api.example.com",
+        message: "failed",
+      });
       expect(matchPartialAppError(error)).toBe("fallback: NetworkError");
     });
   });

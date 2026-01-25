@@ -20,6 +20,56 @@ describe("Result", () => {
       const result = Result.ok(undefined);
       expect(result.value).toBe(undefined);
     });
+
+    it("creates Ok<void> when called without arguments", () => {
+      const result = Result.ok();
+      expect(result).toBeInstanceOf(Ok);
+      expect(result.status).toBe("ok");
+      expect(result.value).toBe(undefined);
+    });
+
+    it("Ok<void> is assignable to Result<void, E>", () => {
+      const save = (): Result<void, Error> => {
+        return Result.ok();
+      };
+      const result = save();
+      expect(result.isOk()).toBe(true);
+      expect(result.unwrap()).toBe(undefined);
+    });
+
+    it("Ok<void> works with map", () => {
+      const result = Result.ok().map(() => 42);
+      expect(result.value).toBe(42);
+    });
+
+    it("Ok<void> works with andThen", () => {
+      const result = Result.ok().andThen(() => Result.ok("done"));
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value).toBe("done");
+      }
+    });
+
+    it("Ok<void> works in Result.gen", () => {
+      const result = Result.gen(function* () {
+        yield* Result.ok();
+        return Result.ok(42);
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value).toBe(42);
+      }
+    });
+
+    it("Ok<void> works with match", () => {
+      const result = Result.ok();
+      const matched = result.match({ ok: () => "matched", err: () => "error" });
+      expect(matched).toBe("matched");
+    });
+
+    it("Ok<void> serializes correctly", () => {
+      expect(Result.serialize(Result.ok())).toEqual({ status: "ok", value: undefined });
+    });
   });
 
   describe("err", () => {
@@ -807,7 +857,7 @@ describe("Result", () => {
       expect(() =>
         Result.gen(function* () {
           try {
-            return Result.ok(1);  // Success path
+            return Result.ok(1); // Success path
           } finally {
             throw new Error("cleanup failed on success");
           }
@@ -819,7 +869,7 @@ describe("Result", () => {
       await expect(
         Result.gen(async function* () {
           try {
-            return Result.ok(1);  // Success path
+            return Result.ok(1); // Success path
           } finally {
             throw new Error("cleanup failed on success");
           }
@@ -1431,8 +1481,8 @@ describe("Type Inference", () => {
       const r: Result<number, ErrorA | ErrorB> = Result.err(new ErrorA());
 
       // Transform only ErrorA to ErrorC, keep ErrorB
-      const mapped: Result<number, ErrorB | ErrorC> = r.mapError(
-        (e): ErrorB | ErrorC => (e._tag === "ErrorA" ? new ErrorC(e.message) : e),
+      const mapped: Result<number, ErrorB | ErrorC> = r.mapError((e): ErrorB | ErrorC =>
+        e._tag === "ErrorA" ? new ErrorC(e.message) : e,
       );
 
       expect(Result.isError(mapped)).toBe(true);

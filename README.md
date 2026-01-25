@@ -1,22 +1,20 @@
 # better-result
+
 Lightweight Result type for TypeScript with generator-based composition.
 
-
-
-
 ## Install
-**New to better-result?** 
+
+**New to better-result?**
+
 ```sh
 npx better-result init
 ```
 
+**Upgrading from v1?**
 
-**Upgrading from v1?** 
 ```sh
 npx better-result migrate
 ```
-
-
 
 ## Quick Start
 
@@ -97,15 +95,12 @@ Result.map((x) => x + 1)(result); // Pipeable
 
 ```ts
 // Transform error type
-const result = fetchUser(id).mapError(
-  (e) => new AppError(`Failed to fetch user: ${e.message}`),
-);
+const result = fetchUser(id).mapError((e) => new AppError(`Failed to fetch user: ${e.message}`));
 
 // Recover from specific errors
 const result = fetchUser(id).match({
   ok: (user) => Result.ok(user),
-  err: (e) =>
-    e._tag === "NotFoundError" ? Result.ok(defaultUser) : Result.err(e),
+  err: (e) => (e._tag === "NotFoundError" ? Result.ok(defaultUser) : Result.err(e)),
 });
 ```
 
@@ -309,10 +304,10 @@ Result.try({
 
 **Panic properties:**
 
-| Property  | Type      | Description                         |
-| --------- | --------- | ----------------------------------- |
-| `message` | `string`  | Describes where/what panicked       |
-| `cause`   | `unknown` | The exception that was thrown       |
+| Property  | Type      | Description                   |
+| --------- | --------- | ----------------------------- |
+| `message` | `string`  | Describes where/what panicked |
+| `cause`   | `unknown` | The exception that was thrown |
 
 Panic also provides `toJSON()` for error reporting services (Sentry, etc.).
 
@@ -437,25 +432,25 @@ const result = Result.deserialize<User, ValidationError>(serialized);
 
 ### TaggedError
 
-| Method                                  | Description                        |
-| --------------------------------------- | ---------------------------------- |
-| `TaggedError(tag)<Props>()`             | Factory for tagged error class     |
-| `TaggedError.is(value)`                 | Type guard for any TaggedError     |
-| `matchError(err, handlers)`             | Exhaustive pattern match by `_tag` |
-| `matchErrorPartial(err, handlers, fb)`  | Partial match with fallback        |
-| `isTaggedError(value)`                  | Type guard (standalone function)   |
-| `panic(message, cause?)`                | Throw unrecoverable Panic          |
-| `isPanic(value)`                        | Type guard for Panic               |
+| Method                                 | Description                        |
+| -------------------------------------- | ---------------------------------- |
+| `TaggedError(tag)<Props>()`            | Factory for tagged error class     |
+| `TaggedError.is(value)`                | Type guard for any TaggedError     |
+| `matchError(err, handlers)`            | Exhaustive pattern match by `_tag` |
+| `matchErrorPartial(err, handlers, fb)` | Partial match with fallback        |
+| `isTaggedError(value)`                 | Type guard (standalone function)   |
+| `panic(message, cause?)`               | Throw unrecoverable Panic          |
+| `isPanic(value)`                       | Type guard for Panic               |
 
 ### Type Helpers
 
-| Type                      | Description                       |
-| ------------------------- | --------------------------------- |
-| `InferOk<R>`              | Extract Ok type from Result       |
-| `InferErr<R>`             | Extract Err type from Result      |
-| `SerializedResult<T, E>`  | Plain object form of Result       |
-| `SerializedOk<T>`         | Plain object form of Ok           |
-| `SerializedErr<E>`        | Plain object form of Err          |
+| Type                     | Description                  |
+| ------------------------ | ---------------------------- |
+| `InferOk<R>`             | Extract Ok type from Result  |
+| `InferErr<R>`            | Extract Err type from Result |
+| `SerializedResult<T, E>` | Plain object form of Result  |
+| `SerializedOk<T>`        | Plain object form of Ok      |
+| `SerializedErr<E>`       | Plain object form of Err     |
 
 ## Agents & AI
 
@@ -485,11 +480,11 @@ The `/adopt-better-result` command guides your AI agent through:
 
 ### Supported agents
 
-| Agent    | Config detected          | Skill location                     |
-| -------- | ------------------------ | ---------------------------------- |
-| OpenCode | `.opencode/`             | `.opencode/skill/better-result-adopt/` |
-| Claude   | `.claude/`, `CLAUDE.md`  | `.claude/skills/better-result-adopt/`  |
-| Codex    | `.codex/`, `AGENTS.md`   | `.codex/skills/better-result-adopt/`   |
+| Agent    | Config detected         | Skill location                         |
+| -------- | ----------------------- | -------------------------------------- |
+| OpenCode | `.opencode/`            | `.opencode/skill/better-result-adopt/` |
+| Claude   | `.claude/`, `CLAUDE.md` | `.claude/skills/better-result-adopt/`  |
+| Codex    | `.codex/`, `AGENTS.md`  | `.codex/skills/better-result-adopt/`   |
 
 ### Manual usage
 
