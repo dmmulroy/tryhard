@@ -388,7 +388,7 @@ type AnyResult = Ok<unknown, unknown> | Err<unknown, unknown>;
 
 function ok(): Ok<void, never>;
 function ok<A, E = never>(value: A): Ok<A, E>;
-function ok(value?: unknown) {
+function ok(value?: unknown): Ok<unknown, never> {
   return new Ok(value);
 }
 
@@ -802,7 +802,8 @@ export const Result = {
    * Creates successful result.
    *
    * @example
-   * Result.ok(42) // Ok(42)
+   * Result.ok(42)  // Ok<number, never>
+   * Result.ok()    // Ok<void, never> - for side-effectful operations
    */
   ok,
   /**

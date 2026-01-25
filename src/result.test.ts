@@ -60,6 +60,16 @@ describe("Result", () => {
         expect(result.value).toBe(42);
       }
     });
+
+    it("Ok<void> works with match", () => {
+      const result = Result.ok();
+      const matched = result.match({ ok: () => "matched", err: () => "error" });
+      expect(matched).toBe("matched");
+    });
+
+    it("Ok<void> serializes correctly", () => {
+      expect(Result.serialize(Result.ok())).toEqual({ status: "ok", value: undefined });
+    });
   });
 
   describe("err", () => {
