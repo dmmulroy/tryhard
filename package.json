@@ -44,7 +44,6 @@
     "prepublishOnly": "bun run build",
     "test": "bun test src/",
     "check": "tsc --noEmit",
-    "publish": "npm publish",
     "lint": "oxlint .",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check ."
