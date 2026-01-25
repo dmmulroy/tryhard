@@ -25,11 +25,11 @@ Begin migration at I/O boundaries (API calls, DB queries, file ops) and work inw
 
 Before migrating, categorize errors in target code:
 
-| Category | Example | Migration Target |
-|----------|---------|------------------|
-| Domain errors | NotFound, Validation | TaggedError + Result.err |
-| Infrastructure | Network, DB connection | Result.tryPromise + TaggedError |
-| Bugs/defects | null deref, type error | Let throw (becomes Panic if in Result callback) |
+| Category       | Example                | Migration Target                                |
+| -------------- | ---------------------- | ----------------------------------------------- |
+| Domain errors  | NotFound, Validation   | TaggedError + Result.err                        |
+| Infrastructure | Network, DB connection | Result.tryPromise + TaggedError                 |
+| Bugs/defects   | null deref, type error | Let throw (becomes Panic if in Result callback) |
 
 ### 3. Migration Order
 
@@ -56,7 +56,7 @@ function parseConfig(json: string): Config {
 function parseConfig(json: string): Result<Config, ParseError> {
   return Result.try({
     try: () => JSON.parse(json) as Config,
-    catch: (e) => new ParseError({ cause: e, message: `Parse failed: ${e}` })
+    catch: (e) => new ParseError({ cause: e, message: `Parse failed: ${e}` }),
   });
 }
 ```
@@ -79,7 +79,7 @@ async function fetchUser(id: string): Promise<Result<User, ApiError | UnhandledE
       if (!res.ok) throw new ApiError({ status: res.status, message: `API ${res.status}` });
       return res.json() as Promise<User>;
     },
-    catch: (e) => e instanceof ApiError ? e : new UnhandledException({ cause: e })
+    catch: (e) => (e instanceof ApiError ? e : new UnhandledException({ cause: e })),
   });
 }
 ```
@@ -89,14 +89,16 @@ async function fetchUser(id: string): Promise<Result<User, ApiError | UnhandledE
 ```typescript
 // BEFORE
 function findUser(id: string): User | null {
-  return users.find(u => u.id === id) ?? null;
+  return users.find((u) => u.id === id) ?? null;
 }
 // Caller must check: if (user === null) ...
 
 // AFTER
 function findUser(id: string): Result<User, NotFoundError> {
-  const user = users.find(u => u.id === id);
-  return user ? Result.ok(user) : Result.err(new NotFoundError({ id, message: `User ${id} not found` }));
+  const user = users.find((u) => u.id === id);
+  return user
+    ? Result.ok(user)
+    : Result.err(new NotFoundError({ id, message: `User ${id} not found` }));
 }
 // Caller: yield* findUser(id) in Result.gen, or .match()
 ```

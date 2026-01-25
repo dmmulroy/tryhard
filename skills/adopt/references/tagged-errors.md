@@ -54,7 +54,7 @@ class DatabaseError extends TaggedError("DatabaseError")<{
 // Usage in Result.tryPromise
 Result.tryPromise({
   try: () => db.query(sql),
-  catch: (e) => new DatabaseError({ operation: "query", cause: e })
+  catch: (e) => new DatabaseError({ operation: "query", cause: e }),
 });
 ```
 
@@ -68,7 +68,7 @@ class RateLimitError extends TaggedError("RateLimitError")<{
   constructor(args: { retryAfterMs: number }) {
     super({
       retryAfter: args.retryAfterMs,
-      message: `Rate limited, retry after ${args.retryAfterMs}ms`
+      message: `Rate limited, retry after ${args.retryAfterMs}ms`,
     });
   }
 }
@@ -117,7 +117,7 @@ import { matchErrorPartial } from "better-result";
 const message = matchErrorPartial(
   error,
   { NotFoundError: (e) => `Missing: ${e.id}` },
-  (e) => `Error: ${e.message}`  // fallback for ValidationError, AuthError
+  (e) => `Error: ${e.message}`, // fallback for ValidationError, AuthError
 );
 ```
 
@@ -133,11 +133,11 @@ if (isTaggedError(value)) {
 
 // Check specific error class
 if (NotFoundError.is(value)) {
-  console.log(value.id);  // narrowed to NotFoundError
+  console.log(value.id); // narrowed to NotFoundError
 }
 
 // Also available
-TaggedError.is(value);  // same as isTaggedError
+TaggedError.is(value); // same as isTaggedError
 ```
 
 ### In Result.match
@@ -145,10 +145,11 @@ TaggedError.is(value);  // same as isTaggedError
 ```typescript
 result.match({
   ok: (value) => handleSuccess(value),
-  err: (e) => matchError(e, {
-    NotFoundError: (e) => handleNotFound(e),
-    ValidationError: (e) => handleValidation(e),
-  })
+  err: (e) =>
+    matchError(e, {
+      NotFoundError: (e) => handleNotFound(e),
+      ValidationError: (e) => handleValidation(e),
+    }),
 });
 ```
 
@@ -169,7 +170,9 @@ pipe(error, handler);
 ```typescript
 // FROM: class hierarchy
 class NotFoundError extends AppError {
-  constructor(public id: string) { super(`Not found: ${id}`); }
+  constructor(public id: string) {
+    super(`Not found: ${id}`);
+  }
 }
 // TO: TaggedError
 class NotFoundError extends TaggedError("NotFoundError")<{ id: string; message: string }>() {

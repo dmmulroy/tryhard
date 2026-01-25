@@ -106,7 +106,7 @@ function detectConfiguredAgent() {
 function getAvailableAgents() {
   return /** @type {Agent[]} */ (
     Object.keys(AGENT_CONFIG).filter((agent) =>
-      hasBinary(AGENT_CONFIG[/** @type {Agent} */ (agent)].cli)
+      hasBinary(AGENT_CONFIG[/** @type {Agent} */ (agent)].cli),
     )
   );
 }
@@ -357,8 +357,7 @@ async function runMigrate() {
   const detectedPM = detectPackageManager();
   const configuredAgent = detectConfiguredAgent();
   const availableAgents = getAvailableAgents();
-  const detectedAgent =
-    configuredAgent ?? (availableAgents.length > 0 ? availableAgents[0] : null);
+  const detectedAgent = configuredAgent ?? (availableAgents.length > 0 ? availableAgents[0] : null);
 
   // Build package manager options
   const pmList = /** @type {PackageManager[]} */ (["npm", "bun", "pnpm"]);
@@ -402,7 +401,7 @@ async function runMigrate() {
           initialValue: true,
         }),
     },
-    { onCancel }
+    { onCancel },
   );
 
   const selectedPM = /** @type {PackageManager} */ (responses.pm);
@@ -426,7 +425,7 @@ async function runMigrate() {
             initialValue: true,
           }),
       },
-      { onCancel }
+      { onCancel },
     );
 
     selectedAgent = /** @type {Agent} */ (toolResponses.agent);
@@ -619,8 +618,7 @@ async function runInit() {
   const detectedPM = detectPackageManager();
   const configuredAgent = detectConfiguredAgent();
   const availableAgents = getAvailableAgents();
-  const detectedAgent =
-    configuredAgent ?? (availableAgents.length > 0 ? availableAgents[0] : null);
+  const detectedAgent = configuredAgent ?? (availableAgents.length > 0 ? availableAgents[0] : null);
 
   // Build package manager options
   const pmList = /** @type {PackageManager[]} */ (["npm", "bun", "pnpm"]);
@@ -669,7 +667,7 @@ async function runInit() {
           initialValue: true,
         }),
     },
-    { onCancel }
+    { onCancel },
   );
 
   const selectedPM = /** @type {PackageManager} */ (responses.pm);
@@ -700,7 +698,7 @@ async function runInit() {
             initialValue: true,
           }),
       },
-      { onCancel }
+      { onCancel },
     );
 
     selectedAgent = /** @type {Agent} */ (toolResponses.agent);
@@ -750,10 +748,10 @@ async function runInit() {
     s2.stop("Skill + command installed");
 
     p.log.success(
-      `Skill: ${color.dim(skillResult.message)}${skillResult.existed ? color.dim(" (existed)") : ""}`
+      `Skill: ${color.dim(skillResult.message)}${skillResult.existed ? color.dim(" (existed)") : ""}`,
     );
     p.log.success(
-      `Command: ${color.dim(commandResult.message)}${commandResult.existed ? color.dim(" (existed)") : ""}`
+      `Command: ${color.dim(commandResult.message)}${commandResult.existed ? color.dim(" (existed)") : ""}`,
     );
   }
 

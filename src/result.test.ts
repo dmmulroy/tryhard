@@ -857,7 +857,7 @@ describe("Result", () => {
       expect(() =>
         Result.gen(function* () {
           try {
-            return Result.ok(1);  // Success path
+            return Result.ok(1); // Success path
           } finally {
             throw new Error("cleanup failed on success");
           }
@@ -869,7 +869,7 @@ describe("Result", () => {
       await expect(
         Result.gen(async function* () {
           try {
-            return Result.ok(1);  // Success path
+            return Result.ok(1); // Success path
           } finally {
             throw new Error("cleanup failed on success");
           }
@@ -1481,8 +1481,8 @@ describe("Type Inference", () => {
       const r: Result<number, ErrorA | ErrorB> = Result.err(new ErrorA());
 
       // Transform only ErrorA to ErrorC, keep ErrorB
-      const mapped: Result<number, ErrorB | ErrorC> = r.mapError(
-        (e): ErrorB | ErrorC => (e._tag === "ErrorA" ? new ErrorC(e.message) : e),
+      const mapped: Result<number, ErrorB | ErrorC> = r.mapError((e): ErrorB | ErrorC =>
+        e._tag === "ErrorA" ? new ErrorC(e.message) : e,
       );
 
       expect(Result.isError(mapped)).toBe(true);

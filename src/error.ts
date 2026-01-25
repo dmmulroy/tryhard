@@ -34,58 +34,59 @@ const isAnyTaggedError = (value: unknown): value is AnyTaggedError => {
  * TaggedError.is(err) // true
  */
 export const TaggedError: {
-  <Tag extends string>(tag: Tag): <Props extends Record<string, unknown> = {}>() => TaggedErrorClass<
-    Tag,
-    Props
-  >;
+  <Tag extends string>(
+    tag: Tag,
+  ): <Props extends Record<string, unknown> = {}>() => TaggedErrorClass<Tag, Props>;
   /** Type guard for any TaggedError instance */
   is(value: unknown): value is AnyTaggedError;
 } = Object.assign(
   <Tag extends string>(tag: Tag) =>
-  <Props extends Record<string, unknown> = {}>(): TaggedErrorClass<Tag, Props> => {
-    class Base extends Error {
-      readonly _tag: Tag = tag;
+    <Props extends Record<string, unknown> = {}>(): TaggedErrorClass<Tag, Props> => {
+      class Base extends Error {
+        readonly _tag: Tag = tag;
 
-      /** Type guard for this error class */
-      static is(value: unknown): value is Base {
-        return value instanceof Base;
-      }
-
-      constructor(args?: Props) {
-        const message =
-          args && "message" in args && typeof args.message === "string" ? args.message : undefined;
-        const cause = args && "cause" in args ? args.cause : undefined;
-
-        super(message, cause !== undefined ? { cause } : undefined);
-
-        if (args) {
-          Object.assign(this, args);
+        /** Type guard for this error class */
+        static is(value: unknown): value is Base {
+          return value instanceof Base;
         }
 
-        Object.setPrototypeOf(this, new.target.prototype);
-        this.name = tag;
+        constructor(args?: Props) {
+          const message =
+            args && "message" in args && typeof args.message === "string"
+              ? args.message
+              : undefined;
+          const cause = args && "cause" in args ? args.cause : undefined;
 
-        if (cause instanceof Error && cause.stack) {
-          const indented = cause.stack.replace(/\n/g, "\n  ");
-          this.stack = `${this.stack}\nCaused by: ${indented}`;
+          super(message, cause !== undefined ? { cause } : undefined);
+
+          if (args) {
+            Object.assign(this, args);
+          }
+
+          Object.setPrototypeOf(this, new.target.prototype);
+          this.name = tag;
+
+          if (cause instanceof Error && cause.stack) {
+            const indented = cause.stack.replace(/\n/g, "\n  ");
+            this.stack = `${this.stack}\nCaused by: ${indented}`;
+          }
+        }
+
+        toJSON(): object {
+          return {
+            ...this,
+            _tag: this._tag,
+            name: this.name,
+            message: this.message,
+            cause: serializeCause(this.cause),
+            stack: this.stack,
+          };
         }
       }
 
-      toJSON(): object {
-        return {
-          ...this,
-          _tag: this._tag,
-          name: this.name,
-          message: this.message,
-          cause: serializeCause(this.cause),
-          stack: this.stack,
-        };
-      }
-    }
-
-    // SAFETY: Cast needed for factory pattern - Props are assigned via Object.assign
-    return Base as unknown as TaggedErrorClass<Tag, Props>;
-  },
+      // SAFETY: Cast needed for factory pattern - Props are assigned via Object.assign
+      return Base as unknown as TaggedErrorClass<Tag, Props>;
+    },
   { is: isAnyTaggedError },
 );
 
@@ -97,10 +98,9 @@ export type TaggedErrorInstance<Tag extends string, Props> = Error & {
 
 /** Class type produced by TaggedError factory */
 export type TaggedErrorClass<Tag extends string, Props> = {
-  new (...args: keyof Props extends never ? [args?: {}] : [args: Props]): TaggedErrorInstance<
-    Tag,
-    Props
-  >;
+  new (
+    ...args: keyof Props extends never ? [args?: {}] : [args: Props]
+  ): TaggedErrorInstance<Tag, Props>;
   /** Type guard for this error class */
   is(value: unknown): value is TaggedErrorInstance<Tag, Props>;
 };
@@ -129,14 +129,11 @@ type MatchHandlers<E extends AnyTaggedError, R> = {
 export const matchError: {
   <E extends AnyTaggedError, R>(err: E, handlers: MatchHandlers<E, R>): R;
   <E extends AnyTaggedError, R>(handlers: MatchHandlers<E, R>): (err: E) => R;
-} = dual(
-  2,
-  <E extends AnyTaggedError, R>(err: E, handlers: MatchHandlers<E, R>): R => {
-    const handler = handlers[err._tag as E["_tag"]];
-    // SAFETY: handler exists if handlers satisfies MatchHandlers<E, R>
-    return handler(err as Extract<E, { _tag: (typeof err)["_tag"] }>);
-  },
-);
+} = dual(2, <E extends AnyTaggedError, R>(err: E, handlers: MatchHandlers<E, R>): R => {
+  const handler = handlers[err._tag as E["_tag"]];
+  // SAFETY: handler exists if handlers satisfies MatchHandlers<E, R>
+  return handler(err as Extract<E, { _tag: (typeof err)["_tag"] }>);
+});
 
 /**
  * Partial pattern match with fallback for unhandled tags.

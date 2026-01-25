@@ -5,6 +5,7 @@
 ### TaggedError API
 
 **Before (v1):**
+
 ```typescript
 class NotFoundError extends TaggedError {
   readonly _tag = "NotFoundError" as const;
@@ -17,6 +18,7 @@ const err = new NotFoundError("123");
 ```
 
 **After (v2):**
+
 ```typescript
 class NotFoundError extends TaggedError("NotFoundError")<{
   id: string;
@@ -29,6 +31,7 @@ const err = new NotFoundError({ id: "123", message: "Not found: 123" });
 ### Match functions
 
 **Before:**
+
 ```typescript
 TaggedError.match(error, { ... })
 TaggedError.matchPartial(error, { ... }, fallback)
@@ -36,12 +39,12 @@ TaggedError.isTaggedError(value)
 ```
 
 **After:**
+
 ```typescript
 matchError(error, { ... })
 matchErrorPartial(error, { ... }, fallback)
 isTaggedError(value)
 ```
-
 
 ## Automated Migration
 
@@ -52,6 +55,7 @@ npx better-result-migrate v2
 ```
 
 Then in OpenCode:
+
 ```
 /skill better-result-migrate-v2
 ```
@@ -59,6 +63,7 @@ Then in OpenCode:
 Ask: "Migrate my TaggedError classes to v2"
 
 The skill handles:
+
 - Simple and complex class transformations
 - Computed messages and validation logic
 - Static method migrations (`TaggedError.match` → `matchError`)
@@ -76,18 +81,20 @@ The skill handles:
 ## New Features
 
 ### Simpler error definitions
+
 ```typescript
 // No more boilerplate _tag declarations
 class MyError extends TaggedError("MyError")<{ code: number; message: string }>() {}
 ```
 
 ### Dual-style match functions
+
 ```typescript
 // Data-first
-matchError(error, { MyError: e => e.code })
+matchError(error, { MyError: (e) => e.code });
 
 // Data-last (pipeable)
-pipe(error, matchError({ MyError: e => e.code }))
+pipe(error, matchError({ MyError: (e) => e.code }));
 ```
 
 ### Panic (new)
@@ -98,7 +105,9 @@ v2 introduces `Panic` — an unrecoverable error thrown when user callbacks thro
 import { Panic, panic, isPanic } from "better-result";
 
 // Callbacks that throw now cause Panic instead of corrupting state
-Result.ok(1).map(() => { throw new Error("bug"); }); // throws Panic
+Result.ok(1).map(() => {
+  throw new Error("bug");
+}); // throws Panic
 
 // Generator cleanup throws → Panic
 Result.gen(function* () {

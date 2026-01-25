@@ -77,7 +77,10 @@ Keep custom constructor to derive message:
 // BEFORE
 class NotFoundError extends TaggedError {
   readonly _tag = "NotFoundError" as const;
-  constructor(readonly resource: string, readonly id: string) {
+  constructor(
+    readonly resource: string,
+    readonly id: string,
+  ) {
     super(`${resource} not found: ${id}`);
   }
 }
@@ -148,11 +151,11 @@ class TimestampedError extends TaggedError("TimestampedError")<{
 
 ### 5. Static method migrations
 
-| V1 | V2 |
-|----|-----|
-| `TaggedError.match(err, handlers)` | `matchError(err, handlers)` |
+| V1                                                  | V2                                           |
+| --------------------------------------------------- | -------------------------------------------- |
+| `TaggedError.match(err, handlers)`                  | `matchError(err, handlers)`                  |
 | `TaggedError.matchPartial(err, handlers, fallback)` | `matchErrorPartial(err, handlers, fallback)` |
-| `TaggedError.isTaggedError(x)` | `isTaggedError(x)` or `TaggedError.is(x)` |
+| `TaggedError.isTaggedError(x)`                      | `isTaggedError(x)` or `TaggedError.is(x)`    |
 
 ### 6. Import updates
 
@@ -181,6 +184,7 @@ import { TaggedError, matchError, matchErrorPartial, isTaggedError } from "bette
 ## Example Full Migration
 
 **Input:**
+
 ```typescript
 import { TaggedError } from "better-result";
 
@@ -193,7 +197,10 @@ class NotFoundError extends TaggedError {
 
 class NetworkError extends TaggedError {
   readonly _tag = "NetworkError" as const;
-  constructor(readonly url: string, readonly status: number) {
+  constructor(
+    readonly url: string,
+    readonly status: number,
+  ) {
     super(`Request to ${url} failed with ${status}`);
   }
 }
@@ -208,6 +215,7 @@ const handleError = (err: AppError) =>
 ```
 
 **Output:**
+
 ```typescript
 import { TaggedError, matchError } from "better-result";
 

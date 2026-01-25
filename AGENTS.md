@@ -26,30 +26,30 @@ better-result/
 
 ## WHERE TO LOOK
 
-| Task                  | Location             | Notes                              |
-| --------------------- | -------------------- | ---------------------------------- |
-| Add Result method     | `src/result.ts`      | Add to both `Ok` and `Err` classes |
-| Add static combinator | `src/result.ts:782`  | `Result` namespace object          |
-| New error type        | `src/error.ts`       | Extend `TaggedError`, add `_tag`   |
-| Change exports        | `src/index.ts`       | Barrel file                        |
-| Add tests             | `src/*.test.ts`      | Colocated, Bun test runner         |
-| Modify CLI            | `bin/cli.mjs`        | Plain JS, uses @clack/prompts      |
+| Task                  | Location            | Notes                              |
+| --------------------- | ------------------- | ---------------------------------- |
+| Add Result method     | `src/result.ts`     | Add to both `Ok` and `Err` classes |
+| Add static combinator | `src/result.ts:782` | `Result` namespace object          |
+| New error type        | `src/error.ts`      | Extend `TaggedError`, add `_tag`   |
+| Change exports        | `src/index.ts`      | Barrel file                        |
+| Add tests             | `src/*.test.ts`     | Colocated, Bun test runner         |
+| Modify CLI            | `bin/cli.mjs`       | Plain JS, uses @clack/prompts      |
 
 ## CODE MAP
 
-| Symbol              | Type  | Location       | Role                           |
-| ------------------- | ----- | -------------- | ------------------------------ |
-| `Ok<A, E>`          | class | result.ts:32   | Success variant, E is phantom  |
-| `Err<T, E>`         | class | result.ts:203  | Error variant, T is phantom    |
-| `Result<T, E>`      | type  | result.ts:361  | Union: `Ok<T,E> \| Err<T,E>`   |
-| `Result` namespace  | obj   | result.ts:782  | Static combinators             |
-| `Result.gen`        | fn    | result.ts:594  | Generator-based composition    |
-| `Result.try`        | fn    | result.ts:400  | Wrap sync throwing fn          |
-| `Result.tryPromise` | fn    | result.ts:448  | Wrap async throwing fn + retry |
-| `TaggedError`       | fn    | error.ts:35    | Factory for discriminated errors |
-| `UnhandledException`| class | error.ts:186   | Wrapper for uncaught exceptions|
-| `Panic`             | class | error.ts:215   | Unrecoverable error (throws)   |
-| `dual`              | fn    | dual.ts:20     | Creates pipeable functions     |
+| Symbol               | Type  | Location      | Role                             |
+| -------------------- | ----- | ------------- | -------------------------------- |
+| `Ok<A, E>`           | class | result.ts:32  | Success variant, E is phantom    |
+| `Err<T, E>`          | class | result.ts:203 | Error variant, T is phantom      |
+| `Result<T, E>`       | type  | result.ts:361 | Union: `Ok<T,E> \| Err<T,E>`     |
+| `Result` namespace   | obj   | result.ts:782 | Static combinators               |
+| `Result.gen`         | fn    | result.ts:594 | Generator-based composition      |
+| `Result.try`         | fn    | result.ts:400 | Wrap sync throwing fn            |
+| `Result.tryPromise`  | fn    | result.ts:448 | Wrap async throwing fn + retry   |
+| `TaggedError`        | fn    | error.ts:35   | Factory for discriminated errors |
+| `UnhandledException` | class | error.ts:186  | Wrapper for uncaught exceptions  |
+| `Panic`              | class | error.ts:215  | Unrecoverable error (throws)     |
+| `dual`               | fn    | dual.ts:20    | Creates pipeable functions       |
 
 ## CONVENTIONS
 
