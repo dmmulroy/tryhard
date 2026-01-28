@@ -373,7 +373,7 @@ new NetworkError({ url: "/api", status: 404 });
 Convert Results to plain objects for RPC, storage, or server actions:
 
 ```ts
-import { Result, SerializedResult } from "better-result";
+import { Result, SerializedResult, ResultDeserializationError } from "better-result";
 
 // Serialize to plain object
 const result = Result.ok(42);
@@ -383,6 +383,12 @@ const serialized = Result.serialize(result);
 // Deserialize back to Result instance
 const deserialized = Result.deserialize<number, never>(serialized);
 // Ok(42) - can use .map(), .andThen(), etc.
+
+// Invalid input returns ResultDeserializationError
+const invalid = Result.deserialize({ foo: "bar" });
+if (Result.isError(invalid) && ResultDeserializationError.is(invalid.error)) {
+  console.log("Bad input:", invalid.error.value);
+}
 
 // Typed boundary for Next.js server actions
 async function createUser(data: FormData): Promise<SerializedResult<User, ValidationError>> {
@@ -410,7 +416,7 @@ const result = Result.deserialize<User, ValidationError>(serialized);
 | `Result.gen(fn)`                 | Generator composition                   |
 | `Result.await(promise)`          | Wrap Promise<Result> for generators     |
 | `Result.serialize(result)`       | Convert Result to plain object          |
-| `Result.deserialize(value)`      | Rehydrate serialized Result             |
+| `Result.deserialize(value)`      | Rehydrate serialized Result (returns `Err<ResultDeserializationError>` on invalid input) |
 | `Result.partition(results)`      | Split array into [okValues, errValues]  |
 | `Result.flatten(result)`         | Flatten nested Result                   |
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Result, Ok, Err } from "./result";
-import { Panic, UnhandledException } from "./error";
+import { Panic, ResultDeserializationError, UnhandledException } from "./error";
 
 describe("Result", () => {
   describe("ok", () => {
@@ -1161,33 +1161,44 @@ describe("Result", () => {
     it("deserializes Ok object to Ok instance", () => {
       const serialized = { status: "ok" as const, value: 42 };
       const result = Result.deserialize<number, string>(serialized);
-      expect(result).not.toBe(null);
+      expect(Result.isOk(result)).toBe(true);
       expect(result).toBeInstanceOf(Ok);
-      expect(result?.unwrap()).toBe(42);
+      expect(result.unwrap()).toBe(42);
     });
 
     it("deserializes Err object to Err instance", () => {
       const serialized = { status: "error" as const, error: "fail" };
       const result = Result.deserialize<number, string>(serialized);
-      expect(result).not.toBe(null);
+      expect(Result.isError(result)).toBe(true);
       expect(result).toBeInstanceOf(Err);
-      if (result && Result.isError(result)) {
+      if (Result.isError(result)) {
         expect(result.error).toBe("fail");
       }
     });
 
-    it("returns null for non-Result objects", () => {
-      expect(Result.deserialize({ foo: "bar" })).toBe(null);
-      expect(Result.deserialize(null)).toBe(null);
-      expect(Result.deserialize(42)).toBe(null);
-      expect(Result.deserialize({ status: "ok" })).toBe(null); // missing value
-      expect(Result.deserialize({ status: "error" })).toBe(null); // missing error
+    it("returns ResultDeserializationError for non-Result objects", () => {
+      const testCases = [
+        { foo: "bar" },
+        null,
+        42,
+        { status: "ok" }, // missing value
+        { status: "error" }, // missing error
+      ];
+
+      for (const input of testCases) {
+        const result = Result.deserialize(input);
+        expect(Result.isError(result)).toBe(true);
+        if (Result.isError(result)) {
+          expect(result.error).toBeInstanceOf(ResultDeserializationError);
+          expect((result.error as ResultDeserializationError).value).toBe(input);
+        }
+      }
     });
 
     it("deserializes complex values", () => {
       const serialized = { status: "ok" as const, value: { id: 1, items: [1, 2] } };
       const result = Result.deserialize<{ id: number; items: number[] }, string>(serialized);
-      expect(result?.unwrap()).toEqual({ id: 1, items: [1, 2] });
+      expect(result.unwrap()).toEqual({ id: 1, items: [1, 2] });
     });
   });
 
@@ -1198,7 +1209,7 @@ describe("Result", () => {
       const deserialized = Result.deserialize<{ id: number; name: string }, never>(serialized);
 
       expect(deserialized).toBeInstanceOf(Ok);
-      expect(deserialized?.unwrap()).toEqual({ id: 42, name: "test" });
+      expect(deserialized.unwrap()).toEqual({ id: 42, name: "test" });
     });
 
     it("roundtrips Err", () => {
@@ -1207,7 +1218,7 @@ describe("Result", () => {
       const deserialized = Result.deserialize<never, { code: string; message: string }>(serialized);
 
       expect(deserialized).toBeInstanceOf(Err);
-      if (deserialized && Result.isError(deserialized)) {
+      if (Result.isError(deserialized)) {
         expect(deserialized.error).toEqual({ code: "NOT_FOUND", message: "User not found" });
       }
     });
@@ -1226,25 +1237,30 @@ describe("Result", () => {
     it("hydrates serialized Ok", () => {
       const serialized = { status: "ok" as const, value: 42 };
       const result = Result.hydrate<number, string>(serialized);
-      expect(result).not.toBe(null);
+      expect(Result.isOk(result)).toBe(true);
       expect(result).toBeInstanceOf(Ok);
-      expect(result?.unwrap()).toBe(42);
+      expect(result.unwrap()).toBe(42);
     });
 
     it("hydrates serialized Err", () => {
       const serialized = { status: "error" as const, error: "fail" };
       const result = Result.hydrate<number, string>(serialized);
-      expect(result).not.toBe(null);
+      expect(Result.isError(result)).toBe(true);
       expect(result).toBeInstanceOf(Err);
-      if (result && Result.isError(result)) {
+      if (Result.isError(result)) {
         expect(result.error).toBe("fail");
       }
     });
 
-    it("returns null for non-Result objects", () => {
-      expect(Result.hydrate({ foo: "bar" })).toBe(null);
-      expect(Result.hydrate(null)).toBe(null);
-      expect(Result.hydrate(42)).toBe(null);
+    it("returns ResultDeserializationError for non-Result objects", () => {
+      const testCases = [{ foo: "bar" }, null, 42];
+      for (const input of testCases) {
+        const result = Result.hydrate(input);
+        expect(Result.isError(result)).toBe(true);
+        if (Result.isError(result)) {
+          expect(result.error).toBeInstanceOf(ResultDeserializationError);
+        }
+      }
     });
   });
 

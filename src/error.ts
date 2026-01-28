@@ -216,6 +216,27 @@ export class Panic extends TaggedError("Panic")<{
 }>() {}
 
 /**
+ * Returned when Result.deserialize receives invalid input.
+ *
+ * @example
+ * const result = Result.deserialize(invalidData);
+ * if (Result.isError(result) && ResultDeserializationError.is(result.error)) {
+ *   console.log("Invalid input:", result.error.value);
+ * }
+ */
+export class ResultDeserializationError extends TaggedError("ResultDeserializationError")<{
+  message: string;
+  value: unknown;
+}>() {
+  constructor(args: { value: unknown }) {
+    super({
+      message: `Failed to deserialize value as Result: expected { status: "ok", value } or { status: "error", error }`,
+      value: args.value,
+    });
+  }
+}
+
+/**
  * Type guard for Panic instances.
  *
  * @example

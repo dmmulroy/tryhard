@@ -6,6 +6,7 @@ export {
   isPanic,
   TaggedError,
   UnhandledException,
+  ResultDeserializationError,
   matchError,
   matchErrorPartial,
   isTaggedError,
