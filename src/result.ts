@@ -794,6 +794,92 @@ const flatten = <T, E, E2>(result: Result<Result<T, E>, E2>): Result<T, E | E2> 
 };
 
 /**
+ * Represents a stream that yields values and tracks a final Result.
+ * Yields emitted values; short-circuits on first Err from yield*.
+ *
+ * @template T Value type yielded by the stream.
+ * @template E Error type that may terminate the stream.
+ */
+export interface ResultStream<T, E> extends AsyncIterable<T> {
+  /**
+   * Returns the final result after consuming the stream.
+   * - `Ok<void>` if stream completed successfully
+   * - `Err<E>` if an error was encountered (stream short-circuits)
+   *
+   * Must be called after fully consuming the stream via for-await-of or manual iteration.
+   * Calling before consumption completes returns the current state (may be incomplete).
+   */
+  result(): Result<void, E>;
+}
+
+/**
+ * Extracts emitted values from yield union, filtering out Err types.
+ * Distributive: InferEmit<A | B | Err<never, E>> = A | B
+ */
+type InferEmit<Y> = Y extends Err<never, unknown> ? never : Y;
+
+/**
+ * Creates a ResultStream from an async generator that emits values via yield
+ * and unwraps Results via yield* (short-circuiting on errors).
+ */
+const stream: {
+  <Yield, R extends AnyResult>(
+    body: () => AsyncGenerator<Yield, R, unknown>,
+  ): ResultStream<InferEmit<Yield>, InferYieldErr<Yield> | InferErr<R>>;
+} = <Yield, R extends AnyResult>(
+  body: () => AsyncGenerator<Yield, R, unknown>,
+): ResultStream<InferEmit<Yield>, InferYieldErr<Yield> | InferErr<R>> => {
+  type E = InferYieldErr<Yield> | InferErr<R>;
+  let finalResult: Result<void, E> = ok();
+
+  const asyncIterator = async function* (): AsyncGenerator<InferEmit<Yield>, void, unknown> {
+    const gen = body();
+
+    while (true) {
+      let state: IteratorResult<Yield, R>;
+      try {
+        state = await gen.next();
+      } catch (cause) {
+        throw panic("stream generator body threw", cause);
+      }
+
+      if (state.done) {
+        assertIsResult(state.value);
+        finalResult = state.value as unknown as Result<void, E>;
+        return;
+      }
+
+      const yielded = state.value;
+
+      // Check if yielded value is an Err (from yield* on a failed Result)
+      if (
+        yielded !== null &&
+        typeof yielded === "object" &&
+        "status" in yielded &&
+        (yielded as { status: string }).status === "error"
+      ) {
+        // SAFETY: Confirmed yielded is Err via status check
+        finalResult = yielded as unknown as Err<void, E>;
+        try {
+          await gen.return?.(undefined as unknown as R);
+        } catch (cause) {
+          throw panic("stream generator cleanup threw", cause);
+        }
+        return;
+      }
+
+      // SAFETY: Not an Err, so must be an emitted value
+      yield yielded as InferEmit<Yield>;
+    }
+  };
+
+  return {
+    [Symbol.asyncIterator]: asyncIterator,
+    result: () => finalResult,
+  };
+};
+
+/**
  * Utilities for creating and handling Result types.
  *
  * @example
@@ -1021,4 +1107,35 @@ export const Result = {
    * Result.flatten(nested) // Ok(42)
    */
   flatten,
+  /**
+   * Creates a stream from an async generator that can both emit values
+   * and use yield* to unwrap Results (short-circuiting on errors).
+   *
+   * - `yield value` emits the value to stream consumers
+   * - `yield* result` unwraps the Result; Ok returns the value, Err short-circuits
+   * - `return Result.ok()` or `return Result.err(e)` ends the stream
+   *
+   * @example
+   * // AI chat streaming with error handling
+   * const stream = Result.streamEmit(async function* () {
+   *   const session = yield* getSession(userId);  // unwrap or short-circuit
+   *
+   *   yield { type: "session", id: session.id };  // emit to consumer
+   *
+   *   for await (const chunk of aiStream) {
+   *     const validated = yield* validateChunk(chunk);  // can fail
+   *     yield { type: "chunk", content: validated };    // emit
+   *   }
+   *
+   *   return Result.ok();
+   * });
+   *
+   * for await (const event of stream) {
+   *   handleEvent(event);
+   * }
+   * if (stream.result().isErr()) {
+   *   handleError(stream.result().error);
+   * }
+   */
+  stream,
 } as const;

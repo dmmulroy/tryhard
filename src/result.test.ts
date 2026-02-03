@@ -1760,4 +1760,210 @@ describe("Type Inference", () => {
       Result.try({ try: () => Promise.resolve(true), catch: () => false });
     });
   });
+
+  describe("stream", () => {
+    class SessionError {
+      readonly _tag = "SessionError";
+      constructor(readonly message: string) {}
+    }
+
+    class ValidationError {
+      readonly _tag = "ValidationError";
+      constructor(readonly field: string) {}
+    }
+
+    const getSession = (id: string): Result<{ id: string; user: string }, SessionError> => {
+      if (id === "bad") return Result.err(new SessionError("Invalid session"));
+      return Result.ok({ id, user: "alice" });
+    };
+
+    const validateChunk = (chunk: string): Result<string, ValidationError> => {
+      if (chunk === "invalid") return Result.err(new ValidationError("content"));
+      return Result.ok(chunk.toUpperCase());
+    };
+
+    it("emits values and completes successfully", async () => {
+      const stream = Result.stream(async function* () {
+        yield { type: "start" as const };
+        yield { type: "chunk" as const, data: "hello" };
+        yield { type: "chunk" as const, data: "world" };
+        yield { type: "end" as const };
+        return Result.ok();
+      });
+
+      const events: Array<{ type: string; data?: string }> = [];
+      for await (const event of stream) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        { type: "start" },
+        { type: "chunk", data: "hello" },
+        { type: "chunk", data: "world" },
+        { type: "end" },
+      ]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("unwraps Results with yield* and emits with yield", async () => {
+      const stream = Result.stream(async function* () {
+        const session = yield* getSession("123");
+        yield { type: "session" as const, id: session.id };
+
+        for (const chunk of ["hello", "world"]) {
+          const validated = yield* validateChunk(chunk);
+          yield { type: "chunk" as const, content: validated };
+        }
+
+        return Result.ok();
+      });
+
+      const events: Array<{ type: string; id?: string; content?: string }> = [];
+      for await (const event of stream) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        { type: "session", id: "123" },
+        { type: "chunk", content: "HELLO" },
+        { type: "chunk", content: "WORLD" },
+      ]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("short-circuits on yield* error", async () => {
+      const stream = Result.stream(async function* () {
+        yield { type: "start" as const };
+
+        const session = yield* getSession("bad"); // This will fail
+        yield { type: "session" as const, id: session.id }; // Never reached
+
+        return Result.ok();
+      });
+
+      const events: Array<{ type: string }> = [];
+      for await (const event of stream) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([{ type: "start" }]);
+      const result = stream.result();
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error).toBeInstanceOf(SessionError);
+        expect((result.error as SessionError).message).toBe("Invalid session");
+      }
+    });
+
+    it("short-circuits mid-stream on validation error", async () => {
+      const stream = Result.stream(async function* () {
+        const session = yield* getSession("123");
+        yield { type: "session" as const, id: session.id };
+
+        for (const chunk of ["hello", "invalid", "world"]) {
+          const validated = yield* validateChunk(chunk); // Fails on "invalid"
+          yield { type: "chunk" as const, content: validated };
+        }
+
+        return Result.ok();
+      });
+
+      const events: Array<{ type: string; id?: string; content?: string }> = [];
+      for await (const event of stream) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        { type: "session", id: "123" },
+        { type: "chunk", content: "HELLO" },
+      ]);
+      const result = stream.result();
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error).toBeInstanceOf(ValidationError);
+      }
+    });
+
+    it("can return explicit error", async () => {
+      const stream = Result.stream(async function* () {
+        yield { type: "start" as const };
+        return Result.err(new SessionError("Explicit error"));
+      });
+
+      const events: Array<{ type: string }> = [];
+      for await (const event of stream) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([{ type: "start" }]);
+      const result = stream.result();
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect((result.error as SessionError).message).toBe("Explicit error");
+      }
+    });
+
+    it("works with async operations", async () => {
+      const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+      const stream = Result.stream(async function* () {
+        yield { type: "start" as const };
+        await delay(1);
+        yield { type: "middle" as const };
+        await delay(1);
+        yield { type: "end" as const };
+        return Result.ok();
+      });
+
+      const events: Array<{ type: string }> = [];
+      for await (const event of stream) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([{ type: "start" }, { type: "middle" }, { type: "end" }]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("infers error types from both yield* and return", async () => {
+      // This test verifies type inference - if it compiles, the types work
+      const stream = Result.stream(async function* () {
+        const session = yield* getSession("123"); // SessionError
+        const validated = yield* validateChunk("test"); // ValidationError
+
+        yield { session: session.id, validated };
+
+        return Result.ok();
+      });
+
+      for await (const _ of stream) {
+        // consume
+      }
+
+      const result = stream.result();
+      // result should be Result<void, SessionError | ValidationError>
+      if (result.isErr()) {
+        const error = result.error;
+        // Type narrowing should work
+        if (error instanceof SessionError) {
+          expect(error._tag).toBe("SessionError");
+        } else if (error instanceof ValidationError) {
+          expect(error._tag).toBe("ValidationError");
+        }
+      }
+    });
+
+    it("handles empty stream", async () => {
+      const stream = Result.stream(async function* () {
+        return Result.ok();
+      });
+
+      const events: unknown[] = [];
+      for await (const event of stream) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+  });
 });
