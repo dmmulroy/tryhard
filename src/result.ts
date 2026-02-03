@@ -794,16 +794,16 @@ const flatten = <T, E, E2>(result: Result<Result<T, E>, E2>): Result<T, E | E2> 
 };
 
 /**
- * Represents a stream of Result values that can be iterated and consumed.
- * Yields unwrapped values for Ok results and short-circuits on first Err.
+ * Represents a stream that yields values and tracks a final Result.
+ * Yields emitted values; short-circuits on first Err from yield*.
  *
- * @template T Success value type yielded by the stream.
+ * @template T Value type yielded by the stream.
  * @template E Error type that may terminate the stream.
  */
 export interface ResultStream<T, E> extends AsyncIterable<T> {
   /**
    * Returns the final result after consuming the stream.
-   * - `Ok<void>` if all values were successfully yielded
+   * - `Ok<void>` if stream completed successfully
    * - `Err<E>` if an error was encountered (stream short-circuits)
    *
    * Must be called after fully consuming the stream via for-await-of or manual iteration.
@@ -811,29 +811,6 @@ export interface ResultStream<T, E> extends AsyncIterable<T> {
    */
   result(): Result<void, E>;
 }
-
-/**
- * Creates a ResultStream from an async iterable of Result values.
- * Unwraps Ok values and yields them; short-circuits on first Err.
- */
-const stream = <T, E>(source: AsyncIterable<Result<T, E>>): ResultStream<T, E> => {
-  let finalResult: Result<void, E> = ok();
-
-  const asyncIterator = async function* (): AsyncGenerator<T, void, unknown> {
-    for await (const item of source) {
-      if (item.status === "error") {
-        finalResult = item as unknown as Err<void, E>;
-        return;
-      }
-      yield item.value;
-    }
-  };
-
-  return {
-    [Symbol.asyncIterator]: asyncIterator,
-    result: () => finalResult,
-  };
-};
 
 /**
  * Extracts emitted values from yield union, filtering out Err types.
@@ -845,7 +822,7 @@ type InferEmit<Y> = Y extends Err<never, unknown> ? never : Y;
  * Creates a ResultStream from an async generator that emits values via yield
  * and unwraps Results via yield* (short-circuiting on errors).
  */
-const streamEmit: {
+const stream: {
   <Yield, R extends AnyResult>(
     body: () => AsyncGenerator<Yield, R, unknown>,
   ): ResultStream<InferEmit<Yield>, InferYieldErr<Yield> | InferErr<R>>;
@@ -863,7 +840,7 @@ const streamEmit: {
       try {
         state = await gen.next();
       } catch (cause) {
-        throw panic("streamEmit generator body threw", cause);
+        throw panic("stream generator body threw", cause);
       }
 
       if (state.done) {
@@ -886,7 +863,7 @@ const streamEmit: {
         try {
           await gen.return?.(undefined as unknown as R);
         } catch (cause) {
-          throw panic("streamEmit generator cleanup threw", cause);
+          throw panic("stream generator cleanup threw", cause);
         }
         return;
       }
@@ -1131,36 +1108,6 @@ export const Result = {
    */
   flatten,
   /**
-   * Creates a stream from an async iterable of Result values.
-   * Unwraps Ok values and yields them; short-circuits on first Err.
-   *
-   * @example
-   * // Stream values until error
-   * async function* fetchPages(): AsyncGenerator<Result<Page, FetchError>> {
-   *   for (let i = 1; i <= 10; i++) {
-   *     yield await fetchPage(i);
-   *   }
-   * }
-   *
-   * const pages = Result.stream(fetchPages());
-   * for await (const page of pages) {
-   *   console.log(page); // Only Ok values are yielded
-   * }
-   * const finalResult = pages.result(); // Ok<void> or Err<FetchError>
-   *
-   * @example
-   * // Collect all values with error handling
-   * const stream = Result.stream(source);
-   * const items: Item[] = [];
-   * for await (const item of stream) {
-   *   items.push(item);
-   * }
-   * if (stream.result().isErr()) {
-   *   console.error("Stream failed:", stream.result().error);
-   * }
-   */
-  stream,
-  /**
    * Creates a stream from an async generator that can both emit values
    * and use yield* to unwrap Results (short-circuiting on errors).
    *
@@ -1190,5 +1137,5 @@ export const Result = {
    *   handleError(stream.result().error);
    * }
    */
-  streamEmit,
+  stream,
 } as const;
