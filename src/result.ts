@@ -794,6 +794,48 @@ const flatten = <T, E, E2>(result: Result<Result<T, E>, E2>): Result<T, E | E2> 
 };
 
 /**
+ * Represents a stream of Result values that can be iterated and consumed.
+ * Yields unwrapped values for Ok results and short-circuits on first Err.
+ *
+ * @template T Success value type yielded by the stream.
+ * @template E Error type that may terminate the stream.
+ */
+export interface ResultStream<T, E> extends AsyncIterable<T> {
+  /**
+   * Returns the final result after consuming the stream.
+   * - `Ok<void>` if all values were successfully yielded
+   * - `Err<E>` if an error was encountered (stream short-circuits)
+   *
+   * Must be called after fully consuming the stream via for-await-of or manual iteration.
+   * Calling before consumption completes returns the current state (may be incomplete).
+   */
+  result(): Result<void, E>;
+}
+
+/**
+ * Creates a ResultStream from an async iterable of Result values.
+ * Unwraps Ok values and yields them; short-circuits on first Err.
+ */
+const stream = <T, E>(source: AsyncIterable<Result<T, E>>): ResultStream<T, E> => {
+  let finalResult: Result<void, E> = ok();
+
+  const asyncIterator = async function* (): AsyncGenerator<T, void, unknown> {
+    for await (const item of source) {
+      if (item.status === "error") {
+        finalResult = item as unknown as Err<void, E>;
+        return;
+      }
+      yield item.value;
+    }
+  };
+
+  return {
+    [Symbol.asyncIterator]: asyncIterator,
+    result: () => finalResult,
+  };
+};
+
+/**
  * Utilities for creating and handling Result types.
  *
  * @example
@@ -1021,4 +1063,34 @@ export const Result = {
    * Result.flatten(nested) // Ok(42)
    */
   flatten,
+  /**
+   * Creates a stream from an async iterable of Result values.
+   * Unwraps Ok values and yields them; short-circuits on first Err.
+   *
+   * @example
+   * // Stream values until error
+   * async function* fetchPages(): AsyncGenerator<Result<Page, FetchError>> {
+   *   for (let i = 1; i <= 10; i++) {
+   *     yield await fetchPage(i);
+   *   }
+   * }
+   *
+   * const pages = Result.stream(fetchPages());
+   * for await (const page of pages) {
+   *   console.log(page); // Only Ok values are yielded
+   * }
+   * const finalResult = pages.result(); // Ok<void> or Err<FetchError>
+   *
+   * @example
+   * // Collect all values with error handling
+   * const stream = Result.stream(source);
+   * const items: Item[] = [];
+   * for await (const item of stream) {
+   *   items.push(item);
+   * }
+   * if (stream.result().isErr()) {
+   *   console.error("Stream failed:", stream.result().error);
+   * }
+   */
+  stream,
 } as const;

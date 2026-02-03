@@ -1760,4 +1760,272 @@ describe("Type Inference", () => {
       Result.try({ try: () => Promise.resolve(true), catch: () => false });
     });
   });
+
+  describe("stream", () => {
+    class StreamError {
+      readonly _tag = "StreamError";
+      constructor(readonly message: string) {}
+    }
+
+    it("yields all Ok values when no errors", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        yield Result.ok(1);
+        yield Result.ok(2);
+        yield Result.ok(3);
+      }
+
+      const stream = Result.stream(source());
+      const values: number[] = [];
+
+      for await (const value of stream) {
+        values.push(value);
+      }
+
+      expect(values).toEqual([1, 2, 3]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("short-circuits on first error and preserves it", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        yield Result.ok(1);
+        yield Result.ok(2);
+        yield Result.err(new StreamError("failed at 3"));
+        yield Result.ok(4); // Should never be reached
+      }
+
+      const stream = Result.stream(source());
+      const values: number[] = [];
+
+      for await (const value of stream) {
+        values.push(value);
+      }
+
+      expect(values).toEqual([1, 2]);
+      const finalResult = stream.result();
+      expect(finalResult.isErr()).toBe(true);
+      if (finalResult.isErr()) {
+        expect(finalResult.error.message).toBe("failed at 3");
+      }
+    });
+
+    it("handles immediate error", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        yield Result.err(new StreamError("immediate error"));
+        yield Result.ok(1); // Never reached
+      }
+
+      const stream = Result.stream(source());
+      const values: number[] = [];
+
+      for await (const value of stream) {
+        values.push(value);
+      }
+
+      expect(values).toEqual([]);
+      const finalResult = stream.result();
+      expect(finalResult.isErr()).toBe(true);
+      if (finalResult.isErr()) {
+        expect(finalResult.error.message).toBe("immediate error");
+      }
+    });
+
+    it("handles empty source", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        // No yields
+      }
+
+      const stream = Result.stream(source());
+      const values: number[] = [];
+
+      for await (const value of stream) {
+        values.push(value);
+      }
+
+      expect(values).toEqual([]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("works with async operations in source", async () => {
+      const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+      async function* source(): AsyncGenerator<Result<string, StreamError>> {
+        await delay(1);
+        yield Result.ok("a");
+        await delay(1);
+        yield Result.ok("b");
+        await delay(1);
+        yield Result.ok("c");
+      }
+
+      const stream = Result.stream(source());
+      const values: string[] = [];
+
+      for await (const value of stream) {
+        values.push(value);
+      }
+
+      expect(values).toEqual(["a", "b", "c"]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("stops processing source after error", async () => {
+      let processedCount = 0;
+
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        processedCount++;
+        yield Result.ok(1);
+        processedCount++;
+        yield Result.err(new StreamError("stop"));
+        processedCount++; // Should never execute
+        yield Result.ok(3);
+      }
+
+      const stream = Result.stream(source());
+      const values: number[] = [];
+
+      for await (const value of stream) {
+        values.push(value);
+      }
+
+      expect(values).toEqual([1]);
+      expect(processedCount).toBe(2); // Only first two iterations executed
+    });
+
+    it("result() returns Ok<void> before consumption starts", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        yield Result.ok(1);
+        yield Result.err(new StreamError("error"));
+      }
+
+      const stream = Result.stream(source());
+
+      // Before any iteration, result should be Ok
+      expect(stream.result().isOk()).toBe(true);
+
+      // Now consume to get the error
+      for await (const _ of stream) {
+        // consume
+      }
+
+      expect(stream.result().isErr()).toBe(true);
+    });
+
+    it("preserves error type correctly", async () => {
+      class TypeA {
+        readonly _tag = "TypeA";
+        constructor(readonly data: number) {}
+      }
+      class TypeB {
+        readonly _tag = "TypeB";
+        constructor(readonly info: string) {}
+      }
+
+      async function* source(): AsyncGenerator<Result<string, TypeA | TypeB>> {
+        yield Result.ok("first");
+        yield Result.err(new TypeB("specific error"));
+      }
+
+      const stream = Result.stream(source());
+      for await (const _ of stream) {
+        // consume
+      }
+
+      const finalResult = stream.result();
+      if (finalResult.isErr()) {
+        const error = finalResult.error;
+        expect(error._tag).toBe("TypeB");
+        if (error._tag === "TypeB") {
+          expect(error.info).toBe("specific error");
+        }
+      }
+    });
+
+    it("can be used with for-await-of break", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        yield Result.ok(1);
+        yield Result.ok(2);
+        yield Result.ok(3);
+        yield Result.ok(4);
+        yield Result.ok(5);
+      }
+
+      const stream = Result.stream(source());
+      const values: number[] = [];
+
+      for await (const value of stream) {
+        values.push(value);
+        if (value === 3) break;
+      }
+
+      expect(values).toEqual([1, 2, 3]);
+      // Result is Ok because no error was encountered
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("works with Array.fromAsync", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        yield Result.ok(10);
+        yield Result.ok(20);
+        yield Result.ok(30);
+      }
+
+      const stream = Result.stream(source());
+      const values = await Array.fromAsync(stream);
+
+      expect(values).toEqual([10, 20, 30]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+
+    it("can iterate multiple times (creates new iterator each time)", async () => {
+      async function* source(): AsyncGenerator<Result<number, StreamError>> {
+        yield Result.ok(1);
+        yield Result.ok(2);
+      }
+
+      const stream = Result.stream(source());
+
+      // First iteration
+      const firstValues: number[] = [];
+      for await (const value of stream) {
+        firstValues.push(value);
+      }
+
+      // Second iteration - starts fresh from the async generator
+      const secondValues: number[] = [];
+      for await (const value of stream) {
+        secondValues.push(value);
+      }
+
+      expect(firstValues).toEqual([1, 2]);
+      // Second iteration is empty because the source generator is exhausted
+      expect(secondValues).toEqual([]);
+    });
+
+    it("works with complex object types", async () => {
+      interface User {
+        id: number;
+        name: string;
+      }
+
+      async function* fetchUsers(): AsyncGenerator<Result<User, StreamError>> {
+        yield Result.ok({ id: 1, name: "Alice" });
+        yield Result.ok({ id: 2, name: "Bob" });
+        yield Result.ok({ id: 3, name: "Charlie" });
+      }
+
+      const stream = Result.stream(fetchUsers());
+      const users: User[] = [];
+
+      for await (const user of stream) {
+        users.push(user);
+      }
+
+      expect(users).toEqual([
+        { id: 1, name: "Alice" },
+        { id: 2, name: "Bob" },
+        { id: 3, name: "Charlie" },
+      ]);
+      expect(stream.result().isOk()).toBe(true);
+    });
+  });
 });
