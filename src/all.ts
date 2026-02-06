@@ -29,12 +29,12 @@ const allEager = async <
   promises: T,
   mode: Mode
 ): Promise<AllEagerReturn<T, Mode>> => {
-  if (mode === "settled") {
-    return (await Promise.all(promises)) as any;
+  if (promises.length === 0) {
+    return (mode === "settled" ? [] : Result.ok([])) as any;
   }
 
-  if (promises.length === 0) {
-    return Result.ok([]) as any;
+  if (mode === "settled") {
+    return (await Promise.all(promises)) as any;
   }
 
   return (await new Promise((resolve) => {
@@ -89,49 +89,53 @@ const allLazy = async <
 ): Promise<AllLazyReturn<T, Mode>> => {
   if (concurrency === "unbounded") {
     return (await allEager(
-      lazyPromises.map((lazyPromise) => lazyPromise()),
+      lazyPromises.map((lp) => lp()),
       mode
     )) as any;
   }
 
-  const executing = new Set<Promise<AnyResult>>();
-  const queue = [...lazyPromises];
-  const results: any[] = [];
-  let index = 0;
-  do {
-    while (executing.size < concurrency) {
-      const nextLazyPromise = queue.shift();
-      if (nextLazyPromise === undefined) {
-        break;
-      }
-
-      const promise = nextLazyPromise();
-      const currentIndex = index++;
-      executing.add(promise);
-      promise.then((result) => {
-        executing.delete(promise);
-        if (mode === "settled") {
-          results[currentIndex] = result;
-          return;
-        }
-        if (result.isOk()) {
-          results[currentIndex] = result.value;
-        }
-        // Returning of error is handled after Promise.race
-      });
-    }
-
-    const winner = await Promise.race(executing);
-    if (winner.isErr() && mode === "default") {
-      return winner as any;
-    }
-  } while (executing.size > 0 || queue.length > 0);
-
-  if (mode === "settled") {
-    return results as any;
+  if (lazyPromises.length === 0) {
+    return (mode === "settled" ? [] : Result.ok([])) as any;
   }
 
-  return Result.ok(results) as any;
+  return (await new Promise((resolve) => {
+    const results: any[] = new Array(lazyPromises.length);
+    let nextIndex = 0;
+    let remaining = lazyPromises.length;
+    let done = false;
+
+    const resolveOuter = (result: any) => {
+      done = true;
+      resolve(result);
+    };
+
+    const runNext = () => {
+      if (done || nextIndex >= lazyPromises.length) return;
+      const i = nextIndex++;
+
+      lazyPromises[i]!().then((result) => {
+        if (mode === "settled") {
+          results[i] = result;
+        } else if (result.isErr()) {
+          resolveOuter(result as any);
+          return;
+        } else {
+          results[i] = result.value;
+        }
+
+        remaining--;
+        if (remaining === 0) {
+          resolveOuter(mode === "settled" ? results : Result.ok(results));
+          return;
+        }
+
+        runNext();
+      });
+    };
+
+    const poolSize = Math.min(concurrency, lazyPromises.length);
+    for (let i = 0; i < poolSize; i++) runNext();
+  })) as any;
 };
 
 export async function all<

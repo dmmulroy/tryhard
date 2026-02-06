@@ -93,10 +93,15 @@ describe("all", () => {
           return { fn, resolve: resolvers.resolve };
         };
 
-        const [one, two] = [makeFn(1), makeFn(2)];
+        const [one, two, four] = [makeFn(1), makeFn(2), makeFn(4)];
 
         const promise = all(
-          [one.fn, two.fn, () => Promise.resolve(Result.err(3 as const))],
+          [
+            one.fn,
+            two.fn,
+            () => Promise.resolve(Result.err(3 as const)),
+            four.fn,
+          ],
           {
             concurrency: 2,
           }
@@ -107,6 +112,10 @@ describe("all", () => {
         await new Promise((resolve) => setImmediate(resolve));
         // We never resolve second promise, if we don't short circuit on third (error case) this would hang forever
         const res = await promise;
+        two.resolve();
+        four.resolve();
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(mock).toHaveBeenCalledTimes(2);
         expect(res).toEqual(Result.err(3));
       });
     });
