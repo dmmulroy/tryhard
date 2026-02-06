@@ -138,26 +138,53 @@ const allLazy = async <
   })) as any;
 };
 
+/**
+ * Takes an array of promises that resolve to a result, and returns a single promise. Depending on the mode, short circuit on the first encountered error or return all results.
+ */
 export async function all<
   const T extends readonly Promise<AnyResult>[],
   Mode extends ModeSetting = "default"
 >(
   promises: T,
   options?: {
+    /**
+     * - `default`: Short circuit on the first encountered error. Return a `Promise<Result<[D1, D2, ...], E1>>`
+     * - `settled`: Return all results. Return a `Promise<[Result<D1, E1>, Result<D2, E2>, ...]>`
+     * @default 'default' */
     mode?: Mode;
+    /**
+     * - `unbounded`: Run all promises in parallel.
+     * - `number`: Run at most `n` promises in parallel. To use, pass an array of functions instead of an array of promises.
+     * @default 'unbounded'
+     */
     concurrency?: "unbounded";
   }
 ): Promise<AllEagerReturn<T, Mode>>;
+/**
+ * Takes an an array of functions that return a promise of a result, and returns a single promise by running the functions in parallel with a concurrency limit.
+ * Depending on the mode, short circuit on the first encountered error or return all results.
+ *
+ */
 export async function all<
   const T extends readonly (() => Promise<AnyResult>)[],
   Mode extends ModeSetting = "default"
 >(
-  promises: T,
+  thunks: T,
   options?: {
+    /**
+     * - `default`: Short circuit on the first encountered error. Return a `Promise<Result<[D1, D2, ...], E1>>`
+     * - `settled`: Return all results. Return a `Promise<[Result<D1, E1>, Result<D2, E2>, ...]>`
+     * @default 'default' */
     mode?: Mode;
+    /**
+     * - `unbounded`: Run all functions in parallel.
+     * - `number`: Run at most `n` function in parallel.
+     * @default 'unbounded'
+     */
     concurrency?: ConcurrencySetting;
   }
 ): Promise<AllLazyReturn<T, Mode>>;
+
 export async function all<
   const T extends readonly Promise<AnyResult>[],
   Mode extends ModeSetting = "default"
