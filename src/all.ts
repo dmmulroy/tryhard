@@ -33,25 +33,28 @@ const allEager = async <
     return (await Promise.all(promises)) as any;
   }
 
-  const data: any[] = [];
-  const executing = new Set(promises);
-  promises.forEach((promise, index) => {
-    promise.then((result) => {
-      if (result.status === "ok") {
-        data[index] = result.value;
-      }
-      executing.delete(promise);
-    });
-  });
-
-  while (executing.size > 0) {
-    const winner = await Promise.race(executing);
-    if (winner.status === "error") {
-      return winner as any;
-    }
+  if (promises.length === 0) {
+    return Result.ok([]) as any;
   }
 
-  return Result.ok(data) as any;
+  return (await new Promise((resolve) => {
+    const data: unknown[] = new Array(promises.length);
+    let remaining = promises.length;
+
+    promises.forEach((promise, index) => {
+      promise.then((result) => {
+        if (result.status === "error") {
+          resolve(result as any); // first error wins, subsequent calls are no-ops
+          return;
+        }
+        data[index] = result.value;
+        remaining--;
+        if (remaining === 0) {
+          resolve(Result.ok(data) as any);
+        }
+      });
+    });
+  })) as any;
 };
 
 type ConcurrencySetting = "unbounded" | number;
