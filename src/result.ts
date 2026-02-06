@@ -461,7 +461,10 @@ const tryPromise: {
     config?: RetryConfig<UnhandledException>,
   ): Promise<Result<A, UnhandledException>>;
   <A, E>(
-    options: { try: () => Promise<A>; catch: (cause: unknown) => E | Promise<E> },
+    options: {
+      try: () => Promise<A>;
+      catch: (cause: unknown) => E | Promise<E>;
+    },
     config?: RetryConfig<E>,
   ): Promise<Result<A, E>>;
 } = async <A, E>(
@@ -793,37 +796,12 @@ const flatten = <T, E, E2>(result: Result<Result<T, E>, E2>): Result<T, E | E2> 
   return result as unknown as Err<T, E | E2>;
 };
 
-
-
 type AllModeSetting = "default" | "settled";
 
-type AllEagerDefaultReturn<T extends readonly Promise<AnyResult>[]> = Promise<
-  Result<
-    {
-      [K in keyof T]: InferOk<Awaited<T[K]>>;
-    },
-    InferErr<Awaited<T[number]>>
-  >
->;
-
-type AllEagerSettledReturn<T extends readonly Promise<AnyResult>[]> = Promise<{
-  [K in keyof T]: Awaited<T[K]>;
-}>;
-
-type AllEagerReturn<
-  T extends readonly Promise<AnyResult>[],
-  Mode extends AllModeSetting
-> = Mode extends "default"
-  ? AllEagerDefaultReturn<T>
-  : AllEagerSettledReturn<T>;
-
-const allEager = async <
-  T extends readonly Promise<AnyResult>[],
-  Mode extends AllModeSetting
->(
+const allEager = async <T extends readonly Promise<AnyResult>[], Mode extends AllModeSetting>(
   promises: T,
-  mode: Mode
-): Promise<AllEagerReturn<T, Mode>> => {
+  mode: Mode,
+): Promise<any> => {
   if (promises.length === 0) {
     return (mode === "settled" ? [] : Result.ok([])) as any;
   }
@@ -854,38 +832,18 @@ const allEager = async <
 
 type ConcurrencySetting = "unbounded" | number;
 
-type AllLazyDefaultReturn<T extends readonly (() => Promise<AnyResult>)[]> =
-  Promise<
-    Result<
-      {
-        [K in keyof T]: InferOk<Awaited<ReturnType<T[K]>>>;
-      },
-      InferErr<Awaited<ReturnType<T[number]>>>
-    >
-  >;
-
-type AllLazySettledReturn<T extends readonly (() => Promise<AnyResult>)[]> =
-  Promise<{
-    [K in keyof T]: Awaited<ReturnType<T[K]>>;
-  }>;
-
-type AllLazyReturn<
-  T extends readonly (() => Promise<AnyResult>)[],
-  Mode extends AllModeSetting
-> = Mode extends "default" ? AllLazyDefaultReturn<T> : AllLazySettledReturn<T>;
-
 const allLazy = async <
   T extends readonly (() => Promise<AnyResult>)[],
-  Mode extends AllModeSetting
+  Mode extends AllModeSetting,
 >(
   lazyPromises: T,
   mode: Mode,
-  concurrency: ConcurrencySetting
-): Promise<AllLazyReturn<T, Mode>> => {
+  concurrency: ConcurrencySetting,
+): Promise<any> => {
   if (concurrency === "unbounded") {
     return (await allEager(
       lazyPromises.map((lp) => lp()),
-      mode
+      mode,
     )) as any;
   }
 
@@ -938,7 +896,7 @@ const allLazy = async <
  */
 export async function all<
   const T extends readonly Promise<AnyResult>[],
-  Mode extends AllModeSetting = "default"
+  Mode extends AllModeSetting = "default",
 >(
   promises: T,
   options?: {
@@ -953,8 +911,19 @@ export async function all<
      * @default 'unbounded'
      */
     concurrency?: "unbounded";
-  }
-): Promise<AllEagerReturn<T, Mode>>;
+  },
+): Promise<
+  Mode extends "default"
+    ? Result<
+        {
+          [K in keyof T]: InferOk<Awaited<T[K]>>;
+        },
+        InferErr<Awaited<T[number]>>
+      >
+    : {
+        [K in keyof T]: Awaited<T[K]>;
+      }
+>;
 /**
  * Takes an an array of functions that return a promise of a result, and returns a single promise by running the functions in parallel with a concurrency limit.
  * Depending on the mode, short circuit on the first encountered error or return all results.
@@ -962,7 +931,7 @@ export async function all<
  */
 export async function all<
   const T extends readonly (() => Promise<AnyResult>)[],
-  Mode extends AllModeSetting = "default"
+  Mode extends AllModeSetting = "default",
 >(
   thunks: T,
   options?: {
@@ -977,30 +946,44 @@ export async function all<
      * @default 'unbounded'
      */
     concurrency?: ConcurrencySetting;
-  }
-): Promise<AllLazyReturn<T, Mode>>;
+  },
+): Promise<
+  Mode extends "default"
+    ? Result<
+        {
+          [K in keyof T]: InferOk<Awaited<ReturnType<T[K]>>>;
+        },
+        InferErr<Awaited<T[number]>>
+      >
+    : {
+        [K in keyof T]: Awaited<ReturnType<T[K]>>;
+      }
+>;
 
 export async function all<
-  const T extends readonly Promise<AnyResult>[],
-  Mode extends AllModeSetting = "default"
+  const T extends readonly Promise<AnyResult>[] | readonly (() => Promise<AnyResult>)[],
+  Mode extends AllModeSetting = "default",
 >(
   promises: T,
   options?: {
     mode?: Mode;
     concurrency?: ConcurrencySetting;
-  }
-): Promise<AllEagerReturn<T, Mode>> {
+  },
+): Promise<any> {
   if (typeof promises[0] === "function") {
+    // If any other aren't functions the user would get a type error
     return (await allLazy(
-      promises as any,
+      promises as readonly (() => Promise<AnyResult>)[],
       options?.mode ?? "default",
-      options?.concurrency ?? "unbounded"
+      options?.concurrency ?? "unbounded",
     )) as any;
   }
 
-  return (await allEager(promises, options?.mode ?? "default")) as any;
+  return (await allEager(
+    promises as readonly Promise<AnyResult>[],
+    options?.mode ?? "default",
+  )) as any;
 }
-
 
 /**
  * Utilities for creating and handling Result types.
@@ -1230,5 +1213,5 @@ export const Result = {
    * Result.flatten(nested) // Ok(42)
    */
   flatten,
-  all
+  all,
 } as const;

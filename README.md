@@ -170,11 +170,7 @@ const result = Result.gen(function* () {
 Run multiple async Result-producing operations in parallel with `Result.all`:
 
 ```ts
-const result = await Result.all([
-  fetchUser(id),
-  fetchPosts(id),
-  getSignedAvatarUrl(id),
-]);
+const result = await Result.all([fetchUser(id), fetchPosts(id), getSignedAvatarUrl(id)]);
 // Result<[User, Post[], string], FetchError | S3Error>
 
 if (Result.isOk(result)) {
@@ -189,10 +185,9 @@ By default, `Result.all` **short-circuits on the first error** — remaining pro
 To wait for all results regardless of errors, use `mode: "settled"`:
 
 ```ts
-const results = await Result.all(
-  [fetchUser(id), fetchPosts(id), fetchSettings(id)],
-  { mode: "settled" },
-);
+const results = await Result.all([fetchUser(id), fetchPosts(id), fetchSettings(id)], {
+  mode: "settled",
+});
 // [Result<User, FetchError>, Result<Post[], FetchError>, Result<Settings, FetchError>]
 
 // Each result can be inspected individually
@@ -212,12 +207,7 @@ Limit how many operations run at the same time by passing **thunks** (functions 
 ```ts
 // Run at most 2 operations at a time
 const result = await Result.all(
-  [
-    () => fetchUser(1),
-    () => fetchUser(2),
-    () => fetchUser(3),
-    () => fetchUser(4),
-  ],
+  [() => fetchUser(1), () => fetchUser(2), () => fetchUser(3), () => fetchUser(4)],
   { concurrency: 2 },
 );
 // Result<[User, User, User, User], FetchError>
@@ -228,12 +218,7 @@ Concurrency works with both modes:
 ```ts
 // Settled + concurrency: run at most 3 at a time, collect all results
 const results = await Result.all(
-  [
-    () => fetchUser(1),
-    () => fetchUser(2),
-    () => fetchUser(3),
-    () => fetchUser(4),
-  ],
+  [() => fetchUser(1), () => fetchUser(2), () => fetchUser(3), () => fetchUser(4)],
   { concurrency: 3, mode: "settled" },
 );
 // [Result<User, FetchError>, Result<User, FetchError>, ...]
@@ -376,7 +361,9 @@ Result.try({
 
 // Catching Panic (for error reporting)
 try {
-  result.map(() => { throw new Error("bug"); });
+  result.map(() => {
+    throw new Error("bug");
+  });
 } catch (error) {
   if (isPanic(error)) {
     // isPanic() is a type guard function
@@ -498,21 +485,21 @@ const result = Result.deserialize<User, ValidationError>(serialized);
 
 ### Result
 
-| Method                           | Description                             |
-| -------------------------------- | --------------------------------------- |
-| `Result.ok(value)`               | Create success                          |
-| `Result.err(error)`              | Create error                            |
-| `Result.try(fn)`                 | Wrap throwing function                  |
-| `Result.tryPromise(fn, config?)` | Wrap async function with optional retry |
-| `Result.isOk(result)`            | Type guard for Ok                       |
-| `Result.isError(result)`         | Type guard for Err                      |
-| `Result.gen(fn)`                 | Generator composition                   |
-| `Result.await(promise)`          | Wrap Promise<Result> for generators     |
-| `Result.serialize(result)`       | Convert Result to plain object          |
+| Method                           | Description                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `Result.ok(value)`               | Create success                                                                           |
+| `Result.err(error)`              | Create error                                                                             |
+| `Result.try(fn)`                 | Wrap throwing function                                                                   |
+| `Result.tryPromise(fn, config?)` | Wrap async function with optional retry                                                  |
+| `Result.isOk(result)`            | Type guard for Ok                                                                        |
+| `Result.isError(result)`         | Type guard for Err                                                                       |
+| `Result.gen(fn)`                 | Generator composition                                                                    |
+| `Result.await(promise)`          | Wrap Promise<Result> for generators                                                      |
+| `Result.serialize(result)`       | Convert Result to plain object                                                           |
 | `Result.deserialize(value)`      | Rehydrate serialized Result (returns `Err<ResultDeserializationError>` on invalid input) |
-| `Result.all(promises, options?)`  | Run promises in parallel, short-circuit or settle |
-| `Result.partition(results)`      | Split array into [okValues, errValues]  |
-| `Result.flatten(result)`         | Flatten nested Result                   |
+| `Result.all(promises, options?)` | Run promises in parallel, short-circuit or settle                                        |
+| `Result.partition(results)`      | Split array into [okValues, errValues]                                                   |
+| `Result.flatten(result)`         | Flatten nested Result                                                                    |
 
 ### Instance Methods
 
