@@ -45,6 +45,7 @@ const message = parsed.match({
 - [Handling Errors](#handling-errors)
 - [Extracting Values](#extracting-values)
 - [Generator Composition](#generator-composition)
+- [Combining Results](#combining-results)
 - [Retry Support](#retry-support)
 - [UnhandledException](#unhandledexception)
 - [Panic](#panic)
@@ -162,6 +163,80 @@ const result = Result.gen(function* () {
   return Result.ok(valid);
 }).mapError((e): AppError => new AppError({ source: e._tag, message: e.message }));
 // Result<ValidatedData, AppError> - error union normalized to single type
+```
+
+## Combining Results
+
+Run multiple async Result-producing operations in parallel with `Result.all`:
+
+```ts
+const result = await Result.all([
+  fetchUser(id),
+  fetchPosts(id),
+  getSignedAvatarUrl(id),
+]);
+// Result<[User, Post[], string], FetchError | S3Error>
+
+if (Result.isOk(result)) {
+  const [user, posts, avatarUrl] = result.value;
+}
+```
+
+By default, `Result.all` **short-circuits on the first error** — remaining promises are ignored and the first `Err` is returned immediately.
+
+### Settled Mode
+
+To wait for all results regardless of errors, use `mode: "settled"`:
+
+```ts
+const results = await Result.all(
+  [fetchUser(id), fetchPosts(id), fetchSettings(id)],
+  { mode: "settled" },
+);
+// [Result<User, FetchError>, Result<Post[], FetchError>, Result<Settings, FetchError>]
+
+// Each result can be inspected individually
+for (const result of results) {
+  if (Result.isOk(result)) {
+    console.log("Success:", result.value);
+  } else {
+    console.error("Failed:", result.error);
+  }
+}
+```
+
+### Concurrency Control
+
+Limit how many operations run at the same time by passing **thunks** (functions that return promises) instead of bare promises:
+
+```ts
+// Run at most 2 operations at a time
+const result = await Result.all(
+  [
+    () => fetchUser(1),
+    () => fetchUser(2),
+    () => fetchUser(3),
+    () => fetchUser(4),
+  ],
+  { concurrency: 2 },
+);
+// Result<[User, User, User, User], FetchError>
+```
+
+Concurrency works with both modes:
+
+```ts
+// Settled + concurrency: run at most 3 at a time, collect all results
+const results = await Result.all(
+  [
+    () => fetchUser(1),
+    () => fetchUser(2),
+    () => fetchUser(3),
+    () => fetchUser(4),
+  ],
+  { concurrency: 3, mode: "settled" },
+);
+// [Result<User, FetchError>, Result<User, FetchError>, ...]
 ```
 
 ## Retry Support
@@ -435,6 +510,7 @@ const result = Result.deserialize<User, ValidationError>(serialized);
 | `Result.await(promise)`          | Wrap Promise<Result> for generators     |
 | `Result.serialize(result)`       | Convert Result to plain object          |
 | `Result.deserialize(value)`      | Rehydrate serialized Result (returns `Err<ResultDeserializationError>` on invalid input) |
+| `Result.all(promises, options?)`  | Run promises in parallel, short-circuit or settle |
 | `Result.partition(results)`      | Split array into [okValues, errValues]  |
 | `Result.flatten(result)`         | Flatten nested Result                   |
 
