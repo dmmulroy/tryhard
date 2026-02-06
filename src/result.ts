@@ -1,4 +1,4 @@
-import { panic, ResultDeserializationError, UnhandledException } from "./error";
+import { Panic, panic, ResultDeserializationError, UnhandledException } from "./error";
 import { dual } from "./dual";
 
 /** Executes fn, panics if it throws. */
@@ -807,25 +807,39 @@ const allEager = async <T extends readonly Promise<AnyResult>[], Mode extends Al
   }
 
   if (mode === "settled") {
-    return (await Promise.all(promises)) as any;
+    return (await Promise.all(promises).catch((e) => {
+      throw new Panic({
+        message: "Result.all promise rejected",
+        cause: e,
+      });
+    })) as any;
   }
 
-  return (await new Promise((resolve) => {
+  return (await new Promise((resolve, reject) => {
     const data: unknown[] = new Array(promises.length);
     let remaining = promises.length;
 
     promises.forEach((promise, index) => {
-      promise.then((result) => {
-        if (result.status === "error") {
-          resolve(result as any); // first error wins, subsequent calls are no-ops
-          return;
-        }
-        data[index] = result.value;
-        remaining--;
-        if (remaining === 0) {
-          resolve(Result.ok(data) as any);
-        }
-      });
+      promise
+        .then((result) => {
+          if (result.status === "error") {
+            resolve(result as any); // first error wins, subsequent calls are no-ops
+            return;
+          }
+          data[index] = result.value;
+          remaining--;
+          if (remaining === 0) {
+            resolve(Result.ok(data) as any);
+          }
+        })
+        .catch((e) =>
+          reject(
+            new Panic({
+              message: "Result.all promise rejected",
+              cause: e,
+            }),
+          ),
+        );
     });
   })) as any;
 };
@@ -851,7 +865,7 @@ const allLazy = async <
     return (mode === "settled" ? [] : Result.ok([])) as any;
   }
 
-  return (await new Promise((resolve) => {
+  return (await new Promise((resolve, reject) => {
     const results: any[] = new Array(lazyPromises.length);
     let nextIndex = 0;
     let remaining = lazyPromises.length;
@@ -862,28 +876,42 @@ const allLazy = async <
       resolve(result);
     };
 
+    const rejectOuter = (e: unknown) => {
+      done = true;
+      reject(
+        new Panic({
+          message: "Result.all promise rejected",
+          cause: e,
+        }),
+      );
+    };
+
     const runNext = () => {
       if (done || nextIndex >= lazyPromises.length) return;
       const i = nextIndex++;
 
-      lazyPromises[i]!().then((result) => {
-        if (mode === "settled") {
-          results[i] = result;
-        } else if (result.isErr()) {
-          resolveOuter(result as any);
-          return;
-        } else {
-          results[i] = result.value;
-        }
+      lazyPromises[i]!()
+        .then((result) => {
+          if (mode === "settled") {
+            results[i] = result;
+          } else if (result.isErr()) {
+            resolveOuter(result as any);
+            return;
+          } else {
+            results[i] = result.value;
+          }
 
-        remaining--;
-        if (remaining === 0) {
-          resolveOuter(mode === "settled" ? results : Result.ok(results));
-          return;
-        }
+          remaining--;
+          if (remaining === 0) {
+            resolveOuter(mode === "settled" ? results : Result.ok(results));
+            return;
+          }
 
-        runNext();
-      });
+          runNext();
+        })
+        .catch((e) => {
+          rejectOuter(e);
+        });
     };
 
     const poolSize = Math.min(concurrency, lazyPromises.length);
@@ -953,7 +981,7 @@ export async function all<
         {
           [K in keyof T]: InferOk<Awaited<ReturnType<T[K]>>>;
         },
-        InferErr<Awaited<T[number]>>
+        InferErr<Awaited<ReturnType<T[number]>>>
       >
     : {
         [K in keyof T]: Awaited<ReturnType<T[K]>>;
@@ -1128,7 +1156,7 @@ export const Result = {
    * Extracts value or returns fallback.
    *
    * @example
-   * Result.unwrapOr(ok(42), 0) // 42
+   * Result.unwrapOr(ok(42), 0) // 42 C
    * Result.unwrapOr(err("fail"), 0) // 0
    */
   unwrapOr,
