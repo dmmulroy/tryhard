@@ -1156,7 +1156,7 @@ export const Result = {
    * Extracts value or returns fallback.
    *
    * @example
-   * Result.unwrapOr(ok(42), 0) // 42 C
+   * Result.unwrapOr(ok(42), 0) // 42
    * Result.unwrapOr(err("fail"), 0) // 0
    */
   unwrapOr,
