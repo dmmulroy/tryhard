@@ -1,4 +1,4 @@
-import { panic, ResultDeserializationError, UnhandledException } from "./error";
+import { Panic, panic, ResultDeserializationError, UnhandledException } from "./error";
 import { dual } from "./dual";
 
 /** Executes fn, panics if it throws. */
@@ -384,7 +384,7 @@ export type InferErr<R> = R extends Err<unknown, infer E> ? E : never;
  * Constraint for any union of Ok/Err types.
  * Used in Result.gen to accept flexible return types from generators.
  */
-type AnyResult = Ok<unknown, unknown> | Err<unknown, unknown>;
+export type AnyResult = Ok<unknown, unknown> | Err<unknown, unknown>;
 
 function ok(): Ok<void, never>;
 function ok<A, E = never>(value: A): Ok<A, E>;
@@ -461,7 +461,10 @@ const tryPromise: {
     config?: RetryConfig<UnhandledException>,
   ): Promise<Result<A, UnhandledException>>;
   <A, E>(
-    options: { try: () => Promise<A>; catch: (cause: unknown) => E | Promise<E> },
+    options: {
+      try: () => Promise<A>;
+      catch: (cause: unknown) => E | Promise<E>;
+    },
     config?: RetryConfig<E>,
   ): Promise<Result<A, E>>;
 } = async <A, E>(
@@ -793,6 +796,223 @@ const flatten = <T, E, E2>(result: Result<Result<T, E>, E2>): Result<T, E | E2> 
   return result as unknown as Err<T, E | E2>;
 };
 
+type AllModeSetting = "default" | "settled";
+
+const allEager = async <T extends readonly Promise<AnyResult>[], Mode extends AllModeSetting>(
+  promises: T,
+  mode: Mode,
+): Promise<any> => {
+  if (promises.length === 0) {
+    return (mode === "settled" ? [] : Result.ok([])) as any;
+  }
+
+  if (mode === "settled") {
+    return (await Promise.all(promises).catch((e) => {
+      throw new Panic({
+        message: "Result.all promise rejected",
+        cause: e,
+      });
+    })) as any;
+  }
+
+  return (await new Promise((resolve, reject) => {
+    const data: unknown[] = new Array(promises.length);
+    let remaining = promises.length;
+
+    promises.forEach((promise, index) => {
+      promise
+        .then((result) => {
+          if (result.status === "error") {
+            resolve(result as any); // first error wins, subsequent calls are no-ops
+            return;
+          }
+          data[index] = result.value;
+          remaining--;
+          if (remaining === 0) {
+            resolve(Result.ok(data) as any);
+          }
+        })
+        .catch((e) =>
+          reject(
+            new Panic({
+              message: "Result.all promise rejected",
+              cause: e,
+            }),
+          ),
+        );
+    });
+  })) as any;
+};
+
+type ConcurrencySetting = "unbounded" | number;
+
+const allLazy = async <
+  T extends readonly (() => Promise<AnyResult>)[],
+  Mode extends AllModeSetting,
+>(
+  lazyPromises: T,
+  mode: Mode,
+  concurrency: ConcurrencySetting,
+): Promise<any> => {
+  if (concurrency === "unbounded") {
+    return (await allEager(
+      lazyPromises.map((lp) => lp()),
+      mode,
+    )) as any;
+  }
+
+  if (lazyPromises.length === 0) {
+    return (mode === "settled" ? [] : Result.ok([])) as any;
+  }
+
+  return (await new Promise((resolve, reject) => {
+    const results: any[] = new Array(lazyPromises.length);
+    let nextIndex = 0;
+    let remaining = lazyPromises.length;
+    let done = false;
+
+    const resolveOuter = (result: any) => {
+      done = true;
+      resolve(result);
+    };
+
+    const rejectOuter = (e: unknown) => {
+      done = true;
+      reject(
+        new Panic({
+          message: "Result.all promise rejected",
+          cause: e,
+        }),
+      );
+    };
+
+    const runNext = () => {
+      if (done || nextIndex >= lazyPromises.length) return;
+      const i = nextIndex++;
+
+      lazyPromises[i]!()
+        .then((result) => {
+          if (mode === "settled") {
+            results[i] = result;
+          } else if (result.isErr()) {
+            resolveOuter(result as any);
+            return;
+          } else {
+            results[i] = result.value;
+          }
+
+          remaining--;
+          if (remaining === 0) {
+            resolveOuter(mode === "settled" ? results : Result.ok(results));
+            return;
+          }
+
+          runNext();
+        })
+        .catch((e) => {
+          rejectOuter(e);
+        });
+    };
+
+    const poolSize = Math.min(concurrency, lazyPromises.length);
+    for (let i = 0; i < poolSize; i++) runNext();
+  })) as any;
+};
+
+/**
+ * Takes an array of promises that resolve to a result, and returns a single promise. Depending on the mode, short circuit on the first encountered error or return all results.
+ */
+export async function all<
+  const T extends readonly Promise<AnyResult>[],
+  Mode extends AllModeSetting = "default",
+>(
+  promises: T,
+  options?: {
+    /**
+     * - `default`: Short circuit on the first encountered error. Return a `Promise<Result<[D1, D2, ...], E1>>`
+     * - `settled`: Return all results. Return a `Promise<[Result<D1, E1>, Result<D2, E2>, ...]>`
+     * @default 'default' */
+    mode?: Mode;
+    /**
+     * - `unbounded`: Run all promises in parallel.
+     * - `number`: Run at most `n` promises in parallel. To use, pass an array of functions instead of an array of promises.
+     * @default 'unbounded'
+     */
+    concurrency?: "unbounded";
+  },
+): Promise<
+  Mode extends "default"
+    ? Result<
+        {
+          [K in keyof T]: InferOk<Awaited<T[K]>>;
+        },
+        InferErr<Awaited<T[number]>>
+      >
+    : {
+        [K in keyof T]: Awaited<T[K]>;
+      }
+>;
+/**
+ * Takes an an array of functions that return a promise of a result, and returns a single promise by running the functions in parallel with a concurrency limit.
+ * Depending on the mode, short circuit on the first encountered error or return all results.
+ *
+ */
+export async function all<
+  const T extends readonly (() => Promise<AnyResult>)[],
+  Mode extends AllModeSetting = "default",
+>(
+  thunks: T,
+  options?: {
+    /**
+     * - `default`: Short circuit on the first encountered error. Return a `Promise<Result<[D1, D2, ...], E1>>`
+     * - `settled`: Return all results. Return a `Promise<[Result<D1, E1>, Result<D2, E2>, ...]>`
+     * @default 'default' */
+    mode?: Mode;
+    /**
+     * - `unbounded`: Run all functions in parallel.
+     * - `number`: Run at most `n` function in parallel.
+     * @default 'unbounded'
+     */
+    concurrency?: ConcurrencySetting;
+  },
+): Promise<
+  Mode extends "default"
+    ? Result<
+        {
+          [K in keyof T]: InferOk<Awaited<ReturnType<T[K]>>>;
+        },
+        InferErr<Awaited<ReturnType<T[number]>>>
+      >
+    : {
+        [K in keyof T]: Awaited<ReturnType<T[K]>>;
+      }
+>;
+
+export async function all<
+  const T extends readonly Promise<AnyResult>[] | readonly (() => Promise<AnyResult>)[],
+  Mode extends AllModeSetting = "default",
+>(
+  promises: T,
+  options?: {
+    mode?: Mode;
+    concurrency?: ConcurrencySetting;
+  },
+): Promise<any> {
+  if (typeof promises[0] === "function") {
+    // If any other aren't functions the user would get a type error
+    return (await allLazy(
+      promises as readonly (() => Promise<AnyResult>)[],
+      options?.mode ?? "default",
+      options?.concurrency ?? "unbounded",
+    )) as any;
+  }
+
+  return (await allEager(
+    promises as readonly Promise<AnyResult>[],
+    options?.mode ?? "default",
+  )) as any;
+}
+
 /**
  * Utilities for creating and handling Result types.
  *
@@ -1021,4 +1241,5 @@ export const Result = {
    * Result.flatten(nested) // Ok(42)
    */
   flatten,
+  all,
 } as const;
